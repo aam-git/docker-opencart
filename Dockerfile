@@ -2,7 +2,7 @@
 # Dockerfile for opencart
 #
 
-FROM php:7.3-apache
+FROM php:8.0-apache
 MAINTAINER aaron <info@aamservices.uk>
 
 RUN a2enmod rewrite headers

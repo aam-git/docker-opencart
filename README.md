@@ -1,6 +1,6 @@
 Opencart 3.0.3.7
 ========
-powered by Apache 2, PHP7.3-apache, MySQL 8.0
+powered by Apache 2, PHP-8-apache, MySQL 8.0
 
 
 [OpenCart][1] is designed feature rich, easy to use, search engine

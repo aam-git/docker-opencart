@@ -14,7 +14,7 @@ RUN set -xe \
     && apt-get update \
     && apt-get install -y libpng-dev libjpeg-dev libwebp-dev unzip \
     && rm -rf /var/lib/apt/lists/* \
-    && docker-php-ext-configure gd --with-jpeg --webp \
+    && docker-php-ext-configure gd --with-jpeg --with-webp \
     && docker-php-ext-install gd mysqli pdo_mysql zip
 
 WORKDIR /var/www/html

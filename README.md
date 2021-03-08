@@ -1,4 +1,4 @@
-Opencart 3.0.3.6
+Opencart 3.0.3.7
 ========
 powered by Apache 2, PHP7.3-apache, MySQL 8.0
 

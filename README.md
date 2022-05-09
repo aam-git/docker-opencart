@@ -35,7 +35,7 @@ I'll be updating it over the coming weeks if needs be.
 version: '3.2'
 services:
   database:
-    image: mysql:8.0
+    image: mysql:8.1
     command: --default-authentication-plugin=mysql_native_password
     environment:
       - MYSQL_DATABASE=opencart

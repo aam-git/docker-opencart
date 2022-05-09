@@ -1,4 +1,4 @@
-Opencart 3.0.3.7
+Opencart 3.0.3.8
 ========
 powered by Apache 2, PHP7.3-apache, MySQL 8.0
 
@@ -16,7 +16,7 @@ Instructions for Composer
 4) go to your web url (eg. http://127.0.0.1)
 5) go through the opencart standard install procedure
  - DB Driver is "MySQLi"
- - Hostname is "mysql"
+ - Hostname is "database"
  - Username is "root"
  - Password is "secure_password_here" (though you should have changed this in step 2)
  - Database is "opencart"
@@ -34,21 +34,17 @@ I'll be updating it over the coming weeks if needs be.
 ```yaml
 version: '3.2'
 services:
-  mysql:
+  database:
     image: mysql:8.0
-    container_name: mysql
-    hostname: mysql
     command: --default-authentication-plugin=mysql_native_password
     environment:
       - MYSQL_DATABASE=opencart
       - MYSQL_ROOT_PASSWORD=change_to_secure_password
     restart: always
     volumes:
-      - mysql_data:/var/lib/mysql
+      - database_data:/var/lib/mysql
   opencart:
     image: aamservices/opencart:latest
-    container_name: opencart
-    hostname: opencart
     restart: always
     ports:
       - '80:80'

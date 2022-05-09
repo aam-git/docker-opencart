@@ -11,7 +11,7 @@ services:
       - database_data:/var/lib/mysql
   opencart:
     image: aamservices/opencart:latest
-	restart: always
+    restart: always
     ports:
       - '80:80'
       - '443:443'

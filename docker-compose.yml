@@ -10,7 +10,7 @@ services:
     volumes:
       - database_data:/var/lib/mysql
   opencart:
-    image: aamservices/opencart:latest
+    image: aamservices/opencart:4.0.0.0
     restart: always
     ports:
       - '80:80'

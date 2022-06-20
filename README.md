@@ -1,6 +1,6 @@
-Opencart 3.0.3.8
+Opencart 4.0.0.0
 ========
-powered by Apache 2, PHP7.3-apache, MySQL 8.0
+powered by Apache 2, PHP8.1-apache, MySQL 8.1
 
 
 [OpenCart][1] is designed feature rich, easy to use, search engine
@@ -44,7 +44,7 @@ services:
     volumes:
       - database_data:/var/lib/mysql
   opencart:
-    image: aamservices/opencart:latest
+    image: aamservices/opencart:4.0.0.0
     restart: always
     ports:
       - '80:80'

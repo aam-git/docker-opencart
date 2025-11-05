@@ -115,41 +115,28 @@ validate_passwords() {
     log "INFO" "Password security validation passed"
 }
 
-# Function to ensure storage directories exist with proper permissions
-ensure_storage_directories() {
-    log "INFO" "Ensuring OpenCart storage directories exist with proper permissions..."
+# Function to ensure proper permissions on storage directories
+ensure_storage_permissions() {
+    log "INFO" "Ensuring proper permissions on OpenCart storage directories..."
     
-    # Create storage directories in both possible locations for compatibility
+    # Storage directories that should have proper permissions
     local storage_paths=(
         "/var/www/storage"
         "/var/www/html/system/storage"
     )
     
-    local storage_subdirs=("cache" "logs" "download" "upload" "session" "modification")
+    # Ensure /var/www and all subdirectories are owned by www-data (important for volume mounts)
+    chown -R www-data:www-data /var/www
     
+    # Set proper permissions on storage directories if they exist
     for storage_path in "${storage_paths[@]}"; do
-        # Create main storage directory
-        if [ ! -d "$storage_path" ]; then
-            log "INFO" "Creating storage directory: $storage_path"
-            mkdir -p "$storage_path"
+        if [ -d "$storage_path" ]; then
+            log "INFO" "Setting permissions on: $storage_path"
+            chmod -R 775 "$storage_path"
         fi
-        
-        # Create storage subdirectories
-        for subdir in "${storage_subdirs[@]}"; do
-            if [ ! -d "$storage_path/$subdir" ]; then
-                mkdir -p "$storage_path/$subdir"
-            fi
-        done
-        
-        # Set proper permissions
-        chown -R www-data:www-data "$storage_path"
-        chmod -R 775 "$storage_path"
     done
     
-    # Ensure /var/www itself is owned by www-data (important for volume mounts)
-    chown www-data:www-data /var/www
-    
-    log "INFO" "Storage directories configured successfully"
+    log "INFO" "Storage permissions configured successfully"
 }
 
 # Function to wait for database to be ready
@@ -314,8 +301,8 @@ install_opencart() {
 
 log "INFO" "Starting OpenCart container initialization..."
 
-# Ensure storage directories exist with proper permissions
-ensure_storage_directories
+# Ensure proper permissions on storage directories
+ensure_storage_permissions
 
 # Check environment variables
 check_env_vars

@@ -101,13 +101,9 @@ RUN set -xe && \
     # Set special permissions for OpenCart writable directories
     chmod 775 /var/www/html/image && \
     chmod 775 /var/www/html/system/storage && \
-    # Create storage directory where OpenCart expects it (both locations for compatibility)
+    # Create storage directory where OpenCart v3 expects it
     mkdir -p /var/www/storage/{cache,logs,download,upload,session,modification} && \
-    mkdir -p /var/www/html/system/storage/{cache,logs,download,upload,session,modification} && \
-    # Set proper permissions for both storage locations
-    chmod -R 775 /var/www/storage && \
-    chmod -R 775 /var/www/html/system/storage && \
-    chown -R www-data:www-data /var/www/storage
+    chmod -R 775 /var/www/storage
 
 # =============================================================================
 # Container Configuration

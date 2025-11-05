@@ -1,26 +1,42 @@
 version: '3.2'
 services:
   database:
-    image: mysql:8.1
+    image: mysql:${MYSQL_VERSION:-8.4}
     command: --default-authentication-plugin=mysql_native_password
     environment:
-      - MYSQL_DATABASE=opencart
-      - MYSQL_ROOT_PASSWORD=secure_password_here
+      - MYSQL_DATABASE=${DB_DATABASE:-opencart}
+      - MYSQL_ROOT_PASSWORD=${DB_PASSWORD:-please_change_this_password}
     restart: always
     volumes:
       - database_data:/var/lib/mysql
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
   opencart:
-    image: aamservices/opencart:4.0.0.0
+    image: ${OPENCART_IMAGE:-aamservices/opencart:4.1.0.3}
     restart: always
     ports:
-      - '80:80'
-      - '443:443'
+      - '${HTTP_PORT:-80}:80'
+      - '${HTTPS_PORT:-443}:443'
     volumes:
       - opencart_data:/var/www/html
     depends_on:
-      - mysql
+      - database
+    environment:
+      # Database connection settings
+      - DB_HOSTNAME=${DB_HOSTNAME:-database}
+      - DB_PORT=${DB_PORT:-3306}
+      - DB_DATABASE=${DB_DATABASE:-opencart}
+      - DB_USERNAME=${DB_USERNAME:-root}
+      - DB_PASSWORD=${DB_PASSWORD:-please_change_this_password}
+      # OpenCart admin user settings
+      - OPENCART_USERNAME=${OPENCART_USERNAME:-admin}
+      - OPENCART_PASSWORD=${OPENCART_PASSWORD:-please_change_this_password}
+      - OPENCART_EMAIL=${OPENCART_EMAIL:-admin@example.com}
+      # Site configuration
+      - OPENCART_SITE_NAME=${OPENCART_SITE_NAME:-My OpenCart Store}
+      - OPENCART_SITE_URL=${OPENCART_SITE_URL:-http://localhost}
 volumes:
-  mysql_data:
+  database_data:
     driver: local
   opencart_data:
     driver: local

@@ -1,0 +1,97 @@
+# =============================================================================
+# OpenCart Docker Project .gitignore
+# =============================================================================
+
+# =============================================================================
+# Security - Environment Variables (NEVER COMMIT!)
+# =============================================================================
+.env
+.env.local
+.env.*.local
+*.env
+
+# =============================================================================
+# Docker Related
+# =============================================================================
+# Docker volumes and persistent data
+/data/
+/mysql-data/
+/opencart-data/
+/volumes/
+
+# Docker logs
+/logs/
+docker-compose.override.yml
+.dockerignore
+
+# =============================================================================
+# OpenCart Specific
+# =============================================================================
+# OpenCart uploads and cache
+/upload/system/storage/cache/
+/upload/system/storage/logs/
+/upload/system/storage/download/
+/upload/system/storage/upload/
+/upload/image/cache/
+
+# OpenCart configuration (if accidentally copied)
+/upload/config.php
+/upload/admin/config.php
+
+# =============================================================================
+# Development Environment
+# =============================================================================
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+.buildpath
+.history
+
+# OS generated files
+.DS_Store
+.DS_Store?
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# =============================================================================
+# Logs and Temporary Files
+# =============================================================================
+*.log
+*.tmp
+*.temp
+*.pid
+*.lock
+*.out
+*.err
+
+# =============================================================================
+# Backup Files
+# =============================================================================
+*.bak
+*.backup
+*.old
+*~
+
+# =============================================================================
+# Package Manager
+# =============================================================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# =============================================================================
+# SSL Certificates (if stored locally)
+# =============================================================================
+*.pem
+*.key
+*.crt
+*.csr
+/ssl/
+/certs/

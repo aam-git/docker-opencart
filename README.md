@@ -1,64 +1,212 @@
-Opencart 4.0.0.0
-========
-powered by Apache 2, PHP8.1-apache, MySQL 8.1
+# OpenCart 4.1.0.3 Docker Container
 
+[![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
+[![OpenCart](https://img.shields.io/badge/OpenCart-4.1.0.3-blue?style=for-the-badge)](https://www.opencart.com/)
+[![PHP](https://img.shields.io/badge/PHP-8.3--apache-777BB4?style=for-the-badge&logo=php&logoColor=white)](https://php.net/)
+[![MySQL](https://img.shields.io/badge/MySQL-8.4-4479A1?style=for-the-badge&logo=mysql&logoColor=white)](https://mysql.com/)
 
-[OpenCart][1] is designed feature rich, easy to use, search engine
-friendly and with a visually appealing interface.
+A production-ready, fully automated Docker setup for [OpenCart](https://www.opencart.com/) e-commerce platform with zero-configuration deployment.
 
-Instructions for Composer
-========
+## ✨ Features
+
+- **🚀 Fully Automated Installation** - Zero manual configuration required
+- **🔒 Security-First Design** - Enforced password validation and secure defaults  
+- **🐳 Multi-Container Architecture** - Separate database and application containers
+- **⚙️ Environment-Based Configuration** - Flexible `.env` file management
+- **🛡️ Production Ready** - Optimized for both development and production environments
+- **🔄 Persistent Data** - Docker volumes ensure data persistence across container restarts
+
+## 🚀 Quick Start
+
+Get your OpenCart store running in under 2 minutes:
+
+```bash
+# Download configuration files
+curl -sSL https://raw.githubusercontent.com/aam-git/docker-opencart/latest/docker-compose.yml > docker-compose.yml
+curl -sSL https://raw.githubusercontent.com/aam-git/docker-opencart/latest/.env.example > .env
+
+# Configure your environment (edit passwords, email, etc.)
+nano .env
+
+# Deploy your store
+docker-compose up -d
+
+# Access your store
+open http://localhost
+```
+
+## ⚙️ Configuration
+
+### Environment Variables
+
+All configuration is managed through environment variables in your `.env` file. The system uses secure defaults but requires customization of security-sensitive values.
+
+#### 🔐 Required Security Configuration
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `DB_PASSWORD` | Database root password | `please_change_this_password` | ✅ |
+| `OPENCART_PASSWORD` | Admin account password | `please_change_this_password` | ✅ |
+| `OPENCART_EMAIL` | Admin email address | `admin@example.com` | ✅ |
+
+#### 🐳 Container Configuration
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MYSQL_VERSION` | MySQL Docker image version | `8.4` |
+| `OPENCART_IMAGE` | OpenCart Docker image | `aamservices/opencart:4.1.0.3` |
+| `HTTP_PORT` | HTTP port mapping | `80` |
+| `HTTPS_PORT` | HTTPS port mapping | `443` |
+
+#### 🗄️ Database Configuration
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DB_HOSTNAME` | Database hostname | `database` |
+| `DB_PORT` | Database port | `3306` |
+| `DB_DATABASE` | Database name | `opencart` |
+| `DB_USERNAME` | Database username | `root` |
+
+#### 🏪 Store Configuration
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OPENCART_USERNAME` | Admin username | `admin` |
+| `OPENCART_SITE_NAME` | Store name | `My OpenCart Store` |
+| `OPENCART_SITE_URL` | Store URL | `http://localhost` |
+
+> **📋 Complete Reference**: See `.env.example` for detailed explanations and additional options.
+
+## 🔄 Automated Installation Process
+
+The container performs intelligent automation on startup:
+
+1. **🔍 Environment Validation**
+   - Validates all required environment variables
+   - Enforces secure password requirements (minimum 8 characters)
+   - Blocks startup with insecure default passwords
+
+2. **🗄️ Database Preparation**
+   - Waits for MySQL container to become available
+   - Establishes database connectivity
+
+3. **📦 Installation Detection**
+   - Checks for existing OpenCart installation
+   - Determines if setup is required
+
+4. **⚡ Automatic Setup** (if needed)
+   - Configures database connections
+   - Executes database schema installation
+   - Creates administrative user account
+   - Applies initial site configuration
+   - Removes installation files for security
+
+5. **🚀 Service Startup**
+   - Launches Apache web server
+   - Makes store available for use
+
+## 🛡️ Security Features
+
+- **Password Validation**: Container refuses to start with default or weak passwords
+- **Automatic Cleanup**: Installation directories removed post-setup
+- **Secure Defaults**: All configuration uses security-first principles
+- **Environment Isolation**: Secrets managed through environment variables
+- **Volume Persistence**: Data stored in Docker volumes, not containers
+
+## 🏗️ Architecture
 
 ```
-1) $ curl -sSL https://raw.githubusercontent.com/aam-git/dockerfiles/master/opencart/docker-compose.yml > docker-compose.yml
-2) use your text editor to edit docker-compose.yml (eg nano docker-compose.yml) and enter a more secure MYSQL_ROOT_PASSWORD
-3) $ docker-compose up -d
-4) go to your web url (eg. http://127.0.0.1)
-5) go through the opencart standard install procedure
- - DB Driver is "MySQLi"
- - Hostname is "database"
- - Username is "root"
- - Password is "secure_password_here" (though you should have changed this in step 2)
- - Database is "opencart"
- - Enter your own details for step 2
-6) Opencart Install should now be complete, you can now delete the install folder.
-7) Log into admin, in the popup for Storage location, change it to anywhere under "/var/www/" for example "/var/www/storage"
+┌─────────────────┐    ┌─────────────────┐
+│   OpenCart      │    │     MySQL       │
+│   Container     │◄──►│   Container     │
+│                 │    │                 │
+│ • PHP 8.3       │    │ • MySQL 8.4     │
+│ • Apache 2      │    │ • Persistent    │
+│ • OpenCart 4.1  │    │   Storage        │
+└─────────────────┘    └─────────────────┘
 ```
 
-Please note this is not fully tested yet, so please make sure to fully test everything before taking it into a production environment.
+## 📚 Advanced Usage
 
-I'll be updating it over the coming weeks if needs be.
+### Production Deployment
 
-## docker-compose.yml
+For production environments, ensure you:
 
-```yaml
-version: '3.2'
-services:
-  database:
-    image: mysql:8.1
-    command: --default-authentication-plugin=mysql_native_password
-    environment:
-      - MYSQL_DATABASE=opencart
-      - MYSQL_ROOT_PASSWORD=change_to_secure_password
-    restart: always
-    volumes:
-      - database_data:/var/lib/mysql
-  opencart:
-    image: aamservices/opencart:4.0.0.0
-    restart: always
-    ports:
-      - '80:80'
-      - '443:443'
-    volumes:
-      - opencart_html:/var/www
-    depends_on:
-      - mysql
-volumes:
-  mysql_data:
-    driver: local
-  opencart_html:
-    driver: local
+```bash
+# Use HTTPS and proper domain
+OPENCART_SITE_URL=https://yourdomain.com
+
+# Use strong, unique passwords
+DB_PASSWORD=$(openssl rand -base64 32)
+OPENCART_PASSWORD=$(openssl rand -base64 24)
+
+# Configure proper ports (if needed)
+HTTP_PORT=8080
+HTTPS_PORT=8443
 ```
+
+### Development Setup
+
+For local development:
+
+```bash
+# Use local URLs
+OPENCART_SITE_URL=http://localhost:3000
+
+# Use development-friendly settings
+OPENCART_SITE_NAME=Dev Store
+OPENCART_USERNAME=dev-admin
+```
+
+### Custom Docker Images
+
+Override the default images:
+
+```bash
+# Use custom MySQL version
+MYSQL_VERSION=8.0
+
+# Use custom OpenCart build
+OPENCART_IMAGE=your-registry/opencart:custom
+```
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+**Container won't start with password error**
+- Ensure `DB_PASSWORD` and `OPENCART_PASSWORD` are changed from defaults
+- Verify passwords are at least 8 characters long
+
+**Database connection failed**
+- Wait for MySQL container to fully initialize (can take 30-60 seconds)
+- Check that `DB_PASSWORD` matches between containers
+
+**Port already in use**
+- Modify `HTTP_PORT` and `HTTPS_PORT` in your `.env` file
+- Ensure no other services are using ports 80/443
+
+### Logs and Debugging
+
+```bash
+# View container logs
+docker-compose logs opencart
+docker-compose logs database
+
+# Access container shell
+docker-compose exec opencart bash
+docker-compose exec database mysql -uroot -p
+```
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## 📄 License
+
+This project is open source and available under the [MIT License](LICENSE).
+
+## 🔗 Links
+
+- [OpenCart Official Website](https://www.opencart.com/)
+- [Docker Hub Repository](https://hub.docker.com/r/aamservices/opencart)
+- [GitHub Repository](https://github.com/aam-git/docker-opencart)
 
 
 [1]: http://www.opencart.com/index.php

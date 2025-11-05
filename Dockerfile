@@ -14,7 +14,7 @@
 # Repository: https://github.com/aam-git/docker-opencart
 # =============================================================================
 
-FROM php:8.3-apache
+FROM php:8.4-apache
 
 # Metadata labels following OCI specification
 LABEL org.opencontainers.image.title="OpenCart Docker Container"

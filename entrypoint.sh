@@ -8,157 +8,136 @@
 # Features:
 # - Environment variable validation
 # - Password security enforcement
-# - Database readiness checking
-# - Automated installation with error handling
-# - Comprehensive logging
-#
-# Author: Aaron M <info@aamservices.uk>
-# =============================================================================
+    # Attempt to import SQL using the mysql CLI (more reliable than naive PHP splitting)
+    log "INFO" "Looking for SQL dump to import using mysql client..."
+    sql_file=''
+    if [ -f /var/www/html/install/opencart.sql ]; then
+        sql_file='/var/www/html/install/opencart.sql'
+    elif [ -f /var/www/html/install/database.sql ]; then
+        sql_file='/var/www/html/install/database.sql'
+    else
+        globs=(/var/www/html/install/*.sql)
+        if [ -f "${globs[0]}" ]; then
+            sql_file="${globs[0]}"
+        fi
+    fi
 
-set -euo pipefail  # Exit on error, undefined vars, pipe failures
+    if [ -n "$sql_file" ] && [ -f "$sql_file" ]; then
+        log "INFO" "Found SQL file: $sql_file"
+        if command -v mysql >/dev/null 2>&1; then
+            log "INFO" "Importing SQL file into database $DB_DATABASE using mysql CLI..."
+            if mysql -h "$DB_HOSTNAME" -P "$DB_PORT" -u "$DB_USERNAME" -p"$DB_PASSWORD" "$DB_DATABASE" < "$sql_file"; then
+                log "INFO" "SQL import completed successfully."
+            else
+                log "WARN" "mysql CLI reported errors during import. Check logs above for details."
+            fi
+        else
+            log "WARN" "mysql client not found in container. Cannot import SQL file automatically."
+        fi
+    else
+        log "INFO" "No SQL file found to import; proceeding and will attempt to create admin user if tables exist."
+    fi
 
-# =============================================================================
-# Configuration and Constants
-# =============================================================================
+    # Create a small PHP finalizer to ensure admin user and basic settings
+    log "INFO" "Preparing inline PHP finalizer to create admin user and finalize settings..."
+    cat > /tmp/install_opencart.php << 'EOF'
+<?php
+// Minimal PHP finalizer: ensure admin user exists and update basic settings
+set_time_limit(0);
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
-# ANSI color codes for output formatting
-readonly RED='\033[0;31m'
-readonly GREEN='\033[0;32m'
-readonly YELLOW='\033[1;33m'
-readonly BLUE='\033[0;34m'
-readonly NC='\033[0m' # No Color
+$db_config = [
+    'host' => getenv('DB_HOSTNAME') ?: 'database',
+    'port' => getenv('DB_PORT') ?: 3306,
+    'database' => getenv('DB_DATABASE') ?: 'opencart',
+    'username' => getenv('DB_USERNAME') ?: 'root',
+    'password' => getenv('DB_PASSWORD') ?: '',
+    'prefix' => 'oc_'
+];
 
-# Script metadata
-readonly SCRIPT_NAME="OpenCart Entrypoint"
-readonly SCRIPT_VERSION="1.0.0"
-
-# Logging function
-log() {
-    local level="$1"
-    shift
-    local message="$*"
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    
-    case "$level" in
-        "INFO")  echo -e "${GREEN}[$timestamp] [INFO]  $message${NC}" ;;
-        "WARN")  echo -e "${YELLOW}[$timestamp] [WARN]  $message${NC}" ;;
-        "ERROR") echo -e "${RED}[$timestamp] [ERROR] $message${NC}" ;;
-        "DEBUG") echo -e "${BLUE}[$timestamp] [DEBUG] $message${NC}" ;;
-        *)       echo -e "[$timestamp] [$level] $message" ;;
-    esac
+try {
+    $dsn = sprintf('mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4', $db_config['host'], $db_config['port'], $db_config['database']);
+    $pdo = new PDO($dsn, $db_config['username'], $db_config['password'], [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_EMULATE_PREPARES => false,
+    ]);
+} catch (PDOException $e) {
+    echo "ERROR: Could not connect to database: " . $e->getMessage() . "\n";
+    exit(1);
 }
 
-# Initialize container
-log "INFO" "$SCRIPT_NAME v$SCRIPT_VERSION starting..."
-
-# =============================================================================
-# Environment Configuration
-# =============================================================================
-
-# Set default values for optional environment variables
-readonly DB_HOSTNAME="${DB_HOSTNAME:-database}"
-readonly DB_PORT="${DB_PORT:-3306}"
-readonly DB_DATABASE="${DB_DATABASE:-opencart}"
-readonly DB_USERNAME="${DB_USERNAME:-root}"
-readonly OPENCART_SITE_URL="${OPENCART_SITE_URL:-http://localhost}"
-readonly OPENCART_SITE_NAME="${OPENCART_SITE_NAME:-My OpenCart Store}"
-
-# Required environment variables (must be provided by user)
-readonly REQUIRED_VARS=(
-    "DB_PASSWORD"
-    "OPENCART_USERNAME" 
-    "OPENCART_PASSWORD"
-    "OPENCART_EMAIL"
-)
-
-log "INFO" "Environment configuration loaded"
-log "DEBUG" "Database: $DB_USERNAME@$DB_HOSTNAME:$DB_PORT/$DB_DATABASE"
-log "DEBUG" "Site: $OPENCART_SITE_NAME at $OPENCART_SITE_URL"
-
-# =============================================================================
-# Validation Functions  
-# =============================================================================
-
-# Check if all required environment variables are set
-check_env_vars() {
-    log "INFO" "Validating required environment variables..."
-    local missing_vars=()
-    
-    for var in "${REQUIRED_VARS[@]}"; do
-        if [ -z "${!var:-}" ]; then
-            missing_vars+=("$var")
-        fi
-    done
-    
-    if [ ${#missing_vars[@]} -ne 0 ]; then
-        log "ERROR" "Missing required environment variables:"
-        for var in "${missing_vars[@]}"; do
-            log "ERROR" "  - $var"
-        done
-        log "ERROR" "Please set these variables in your .env file or docker-compose.yml"
-        log "INFO" "See .env.example for configuration template"
-        exit 1
-    fi
-    
-    log "INFO" "All required environment variables are set"
+// Check if user table exists
+try {
+    $prefix = $db_config['prefix'];
+    $stmt = $pdo->query("SHOW TABLES LIKE '{$prefix}user'");
+    if ($stmt && $stmt->rowCount() > 0) {
+        echo "User table exists. Ensuring admin user and settings...\n";
+    } else {
+        echo "No user table found. Database import may have failed; please check logs.\n";
+        exit(0);
+    }
+} catch (PDOException $e) {
+    echo "ERROR checking database tables: " . $e->getMessage() . "\n";
+    exit(1);
 }
 
-# Function to validate passwords are not using default/insecure values
-validate_passwords() {
-    echo -e "${YELLOW}Validating password security...${NC}"
-    local insecure_passwords=(
-        "please_change_this_password"
-        "secure_password_here"
-        "admin123"
-        "password"
-        "123456"
-        "admin"
-        "root"
-        "opencart"
-        ""
-    )
-    
-    # Check DB_PASSWORD
-    for insecure_pwd in "${insecure_passwords[@]}"; do
-        if [ "$DB_PASSWORD" = "$insecure_pwd" ]; then
-            echo -e "${RED}SECURITY ERROR: You are using an insecure database password: '$DB_PASSWORD'${NC}"
-            echo -e "${RED}Please change DB_PASSWORD in your .env file to a secure password${NC}"
-            echo -e "${YELLOW}Example: DB_PASSWORD=MySecurePassword123!${NC}"
-            exit 1
-        fi
-    done
-    
-    # Check OPENCART_PASSWORD
-    for insecure_pwd in "${insecure_passwords[@]}"; do
-        if [ "$OPENCART_PASSWORD" = "$insecure_pwd" ]; then
-            echo -e "${RED}SECURITY ERROR: You are using an insecure OpenCart admin password: '$OPENCART_PASSWORD'${NC}"
-            echo -e "${RED}Please change OPENCART_PASSWORD in your .env file to a secure password${NC}"
-            echo -e "${YELLOW}Example: OPENCART_PASSWORD=MyAdminPassword456!${NC}"
-            exit 1
-        fi
-    done
-    
-    # Check minimum password length
-    if [ ${#DB_PASSWORD} -lt 8 ]; then
-        echo -e "${RED}SECURITY ERROR: Database password must be at least 8 characters long${NC}"
-        exit 1
-    fi
-    
-    if [ ${#OPENCART_PASSWORD} -lt 8 ]; then
-        echo -e "${RED}SECURITY ERROR: OpenCart admin password must be at least 8 characters long${NC}"
-        exit 1
-    fi
-    
-    echo -e "${GREEN}Password security validation passed${NC}"
+// Create admin user if not exists
+try {
+    $stmt = $pdo->query("SELECT COUNT(*) as c FROM `{$prefix}user` LIMIT 1");
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($row && intval($row['c']) > 0) {
+        echo "Admin user(s) exist, skipping creation.\n";
+    } else {
+        echo "Creating admin user...\n";
+        $salt = substr(md5(uniqid('', true)), 0, 9);
+        $password = getenv('OPENCART_PASSWORD') ?: 'admin';
+        $password_hash = md5($salt . md5($password));
+        $username = getenv('OPENCART_USERNAME') ?: 'admin';
+        $email = getenv('OPENCART_EMAIL') ?: 'admin@example.com';
+        $now = date('Y-m-d H:i:s');
+        $pdo->exec("INSERT INTO `{$prefix}user` (`username`,`password`,`salt`,`firstname`,`lastname`,`email`,`status`,`date_added`,`user_group`) VALUES (" .
+            $pdo->quote($username) . "," . $pdo->quote($password_hash) . "," . $pdo->quote($salt) . "," . $pdo->quote('Admin') . "," . $pdo->quote('User') . "," . $pdo->quote($email) . ",1," . $pdo->quote($now) . ",1)");
+        echo "Admin user created.\n";
+    }
+} catch (PDOException $e) {
+    echo "WARN: Could not create admin user: " . $e->getMessage() . "\n";
 }
 
-# Function to wait for database to be ready
-wait_for_db() {
-    echo -e "${YELLOW}Waiting for database to be ready...${NC}"
-    
-    while ! php -r "
-        try {
-            \$pdo = new PDO('mysql:host=$DB_HOSTNAME;port=$DB_PORT', '$DB_USERNAME', '$DB_PASSWORD');
+// Update config settings (site name and url)
+try {
+    $site_name = getenv('OPENCART_SITE_NAME') ?: 'OpenCart';
+    $site_url = getenv('OPENCART_SITE_URL') ?: 'http://localhost';
+    $pdo->exec("UPDATE `{$prefix}setting` SET `value` = " . $pdo->quote($site_name) . " WHERE `key` = 'config_name'");
+    $pdo->exec("UPDATE `{$prefix}setting` SET `value` = " . $pdo->quote($site_url) . " WHERE `key` = 'config_url'");
+} catch (Exception $e) {
+    echo "WARN: Could not update settings: " . $e->getMessage() . "\n";
+}
+
+echo "OpenCart finalizer finished.\n";
+
+EOF
+
+    log "INFO" "Attempting to run inline PHP finalizer..."
+    if php /tmp/install_opencart.php; then
+        log "INFO" "OpenCart admin user and settings finalized."
+    else
+        log "WARN" "Inline PHP finalizer reported issues. See above for details."
+    fi
+
+    # Clean up
+    rm -f /tmp/install_opencart.php || true
+
+    # Remove install directory for security
+    if [ -d "/var/www/html/install" ]; then
+        echo -e "${YELLOW}Removing install directory for security...${NC}"
+        rm -rf /var/www/html/install
+    fi
+
+    # Set proper permissions
+    chown -R www-data:www-data /var/www/html
+
+    echo -e "${GREEN}OpenCart installation finalization completed!${NC}"
             echo 'connected';
         } catch (Exception \$e) {
             exit(1);

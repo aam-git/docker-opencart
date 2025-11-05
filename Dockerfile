@@ -40,6 +40,7 @@ RUN apt-get update && \
         git \
         zip \
         libzip-dev \
+        default-mysql-client \
         curl \
         unzip && \
     rm -rf /var/lib/apt/lists/*

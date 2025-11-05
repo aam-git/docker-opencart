@@ -74,7 +74,7 @@ ENV OPENCART_VER=3.0.4.1 \
     OPENCART_MD5=f1cd69918494928fd2f13c948be0ba55 \
     OPENCART_FILE=opencart.zip
 
-ENV OPENCART_URL=https://github.com/opencart/opencart/releases/download/${OPENCART_VER}/opencart-${OPENCART_VER}.zip
+ENV OPENCART_URL=https://github.com/opencart/opencart/releases/download/${OPENCART_VER}/${OPENCART_VER}.zip
 
 # Download, verify, and install OpenCart
 RUN set -xe && \

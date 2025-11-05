@@ -115,6 +115,30 @@ validate_passwords() {
     log "INFO" "Password security validation passed"
 }
 
+# Function to ensure proper permissions on storage directories
+ensure_storage_permissions() {
+    log "INFO" "Ensuring proper permissions on OpenCart storage directories..."
+    
+    # Storage directories that should have proper permissions
+    local storage_paths=(
+        "/var/www/storage"
+        "/var/www/html/system/storage"
+    )
+    
+    # Ensure /var/www and all subdirectories are owned by www-data (important for volume mounts)
+    chown -R www-data:www-data /var/www
+    
+    # Set proper permissions on storage directories if they exist
+    for storage_path in "${storage_paths[@]}"; do
+        if [ -d "$storage_path" ]; then
+            log "INFO" "Setting permissions on: $storage_path"
+            chmod -R 775 "$storage_path"
+        fi
+    done
+    
+    log "INFO" "Storage permissions configured successfully"
+}
+
 # Function to wait for database to be ready
 wait_for_db() {
     log "INFO" "Waiting for database to be ready..."
@@ -260,10 +284,8 @@ install_opencart() {
             rm -rf /var/www/html/install
         fi
         
-        # Set proper permissions
-        chown -R www-data:www-data /var/www/html
-        
-        # Make config files read-only after installation
+        # Ensure config files have proper ownership and are read-only after installation
+        chown www-data:www-data /var/www/html/config.php /var/www/html/admin/config.php 2>/dev/null || true
         chmod 644 /var/www/html/config.php /var/www/html/admin/config.php 2>/dev/null || true
         
         log "INFO" "OpenCart installation and security hardening completed!"
@@ -278,6 +300,9 @@ install_opencart() {
 # =============================================================================
 
 log "INFO" "Starting OpenCart container initialization..."
+
+# Ensure proper permissions on storage directories
+ensure_storage_permissions
 
 # Check environment variables
 check_env_vars
@@ -295,9 +320,6 @@ else
     log "INFO" "OpenCart not installed, running automatic installation..."
     install_opencart
 fi
-
-# Set final permissions
-chown -R www-data:www-data /var/www/html
 
 log "INFO" "Initialization complete! Starting Apache..."
 

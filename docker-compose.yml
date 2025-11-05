@@ -2,7 +2,6 @@ version: '3.2'
 services:
   database:
     image: mysql:${MYSQL_VERSION:-8.4}
-    command: --default-authentication-plugin=mysql_native_password
     environment:
       - MYSQL_DATABASE=${DB_DATABASE:-opencart}
       - MYSQL_ROOT_PASSWORD=${DB_PASSWORD:-please_change_this_password}
@@ -12,7 +11,7 @@ services:
     ports:
       - "${MYSQL_PORT:-3306}:3306"
   opencart:
-    image: ${OPENCART_IMAGE:-aamservices/opencart:4.1.0.3}
+    image: ${OPENCART_IMAGE:-ghcr.io/aam-git/docker-opencart:testing}
     restart: always
     ports:
       - '${HTTP_PORT:-80}:80'

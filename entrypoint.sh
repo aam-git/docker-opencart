@@ -8,6 +8,117 @@
 # Features:
 # - Environment variable validation
 # - Password security enforcement
+# - Database connection testing
+# - Automated OpenCart installation
+# - Security hardening
+#
+# =============================================================================
+
+# Color definitions for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Logging function
+log() {
+    local level="$1"
+    local message="$2"
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    
+    case "$level" in
+        "ERROR")
+            echo -e "${RED}[$timestamp] ERROR: $message${NC}" >&2
+            ;;
+        "WARN")
+            echo -e "${YELLOW}[$timestamp] WARN: $message${NC}"
+            ;;
+        "INFO")
+            echo -e "${BLUE}[$timestamp] INFO: $message${NC}"
+            ;;
+        *)
+            echo -e "[$timestamp] $level: $message"
+            ;;
+    esac
+}
+
+# Function to check required environment variables
+check_env_vars() {
+    local missing_vars=()
+    
+    # Required database variables
+    [ -z "$DB_HOSTNAME" ] && missing_vars+=("DB_HOSTNAME")
+    [ -z "$DB_USERNAME" ] && missing_vars+=("DB_USERNAME") 
+    [ -z "$DB_PASSWORD" ] && missing_vars+=("DB_PASSWORD")
+    [ -z "$DB_DATABASE" ] && missing_vars+=("DB_DATABASE")
+    [ -z "$MYSQL_ROOT_PASSWORD" ] && missing_vars+=("MYSQL_ROOT_PASSWORD")
+    
+    # Required OpenCart variables
+    [ -z "$OPENCART_USERNAME" ] && missing_vars+=("OPENCART_USERNAME")
+    [ -z "$OPENCART_PASSWORD" ] && missing_vars+=("OPENCART_PASSWORD") 
+    [ -z "$OPENCART_EMAIL" ] && missing_vars+=("OPENCART_EMAIL")
+    
+    if [ ${#missing_vars[@]} -ne 0 ]; then
+        log "ERROR" "Missing required environment variables: ${missing_vars[*]}"
+        log "ERROR" "Please set all required variables before starting the container"
+        exit 1
+    fi
+    
+    log "INFO" "All required environment variables are set"
+}
+
+# Function to validate password security
+validate_passwords() {
+    log "INFO" "Validating password security requirements..."
+    
+    # Check MySQL root password strength
+    if [ ${#MYSQL_ROOT_PASSWORD} -lt 8 ]; then
+        log "ERROR" "MYSQL_ROOT_PASSWORD must be at least 8 characters long"
+        exit 1
+    fi
+    
+    # Check OpenCart admin password strength
+    if [ ${#OPENCART_PASSWORD} -lt 8 ]; then
+        log "ERROR" "OPENCART_PASSWORD must be at least 8 characters long"
+        exit 1
+    fi
+    
+    # Check for common weak passwords
+    local weak_passwords=("password" "123456" "admin" "root" "test")
+    for weak in "${weak_passwords[@]}"; do
+        if [ "$MYSQL_ROOT_PASSWORD" = "$weak" ] || [ "$OPENCART_PASSWORD" = "$weak" ]; then
+            log "ERROR" "Weak password detected. Please use a stronger password."
+            exit 1
+        fi
+    done
+    
+    log "INFO" "Password security validation passed"
+}
+
+# Function to wait for database to be ready
+wait_for_db() {
+    log "INFO" "Waiting for database to be ready..."
+    
+    while ! php -r "
+        try {
+            new PDO('mysql:host=$DB_HOSTNAME;port=${DB_PORT:-3306}', '$DB_USERNAME', '$DB_PASSWORD');
+            echo 'connected';
+        } catch (Exception \$e) {
+            exit(1);
+        }
+    " > /dev/null 2>&1; do
+        log "INFO" "Database not ready yet, waiting..."
+        sleep 2
+    done
+    
+    log "INFO" "Database is ready"
+}
+
+# Function to run automated OpenCart installation
+run_automated_installation() {
+    log "INFO" "Starting automated OpenCart installation..."
+
     # Attempt to import SQL using the mysql CLI (more reliable than naive PHP splitting)
     log "INFO" "Looking for SQL dump to import using mysql client..."
     sql_file=''
@@ -137,38 +248,34 @@ EOF
     # Set proper permissions
     chown -R www-data:www-data /var/www/html
 
-    echo -e "${GREEN}OpenCart installation finalization completed!${NC}"
-            echo 'connected';
-        } catch (Exception \$e) {
-            exit(1);
-        }
-    " > /dev/null 2>&1; do
-        echo -e "${YELLOW}Database not ready yet, waiting...${NC}"
-        sleep 2
-    done
-    
-    echo -e "${GREEN}Database is ready${NC}"
+    log "INFO" "OpenCart installation finalization completed!"
 }
 
 # Function to check if OpenCart is already installed
 is_opencart_installed() {
+    log "INFO" "Checking if OpenCart is already installed..."
+    
     # Check if config.php has been modified from default
     if [ -f "/var/www/html/config.php" ]; then
         # Check if config.php contains actual database configuration
         if grep -q "define('DB_HOSTNAME'" /var/www/html/config.php && \
            grep -q "define('DB_USERNAME'" /var/www/html/config.php && \
            ! grep -q "localhost" /var/www/html/config.php; then
+            log "INFO" "OpenCart appears to be already installed"
             return 0  # Installed
         fi
     fi
+    
+    log "INFO" "OpenCart is not installed yet"
     return 1  # Not installed
 }
 
 # Function to install OpenCart automatically
 install_opencart() {
-    echo -e "${YELLOW}Installing OpenCart automatically...${NC}"
+    log "INFO" "Installing OpenCart automatically..."
     
     # Update config files with database settings
+    log "INFO" "Updating configuration files with database settings..."
     sed -i "s/define('DB_HOSTNAME', 'localhost');/define('DB_HOSTNAME', '$DB_HOSTNAME');/" /var/www/html/config.php
     sed -i "s/define('DB_USERNAME', '');/define('DB_USERNAME', '$DB_USERNAME');/" /var/www/html/config.php
     sed -i "s/define('DB_PASSWORD', '');/define('DB_PASSWORD', '$DB_PASSWORD');/" /var/www/html/config.php
@@ -182,162 +289,26 @@ install_opencart() {
     sed -i "s/define('DB_DATABASE', '');/define('DB_DATABASE', '$DB_DATABASE');/" /var/www/html/admin/config.php
     sed -i "s/define('DB_PORT', '3306');/define('DB_PORT', '$DB_PORT');/" /var/www/html/admin/config.php
     
-    # Create installation script that doesn't rely on OpenCart classes
-    cat > /tmp/install_opencart.php << EOF
-<?php
-// OpenCart installation script - Direct database approach
-set_time_limit(0);
-
-// Database configuration
-\$db_config = array(
-    'hostname' => '$DB_HOSTNAME',
-    'username' => '$DB_USERNAME', 
-    'password' => '$DB_PASSWORD',
-    'database' => '$DB_DATABASE',
-    'port'     => '$DB_PORT',
-    'prefix'   => 'oc_'
-);
-
-// Admin user configuration
-\$admin_config = array(
-    'username' => '$OPENCART_USERNAME',
-    'password' => '$OPENCART_PASSWORD',
-    'email'    => '$OPENCART_EMAIL',
-    'firstname'=> 'Admin',
-    'lastname' => 'User'
-);
-
-// Site configuration
-\$site_config = array(
-    'name' => '$OPENCART_SITE_NAME',
-    'url'  => '$OPENCART_SITE_URL'
-);
-
-try {
-    // Connect to database
-    \$pdo = new PDO("mysql:host={\$db_config['hostname']};port={\$db_config['port']};dbname={\$db_config['database']}", \$db_config['username'], \$db_config['password']);
-    \$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    
-    // Check if tables already exist
-    \$stmt = \$pdo->query("SHOW TABLES LIKE 'oc_user'");
-    if (\$stmt->rowCount() > 0) {
-        echo "OpenCart tables already exist, skipping database installation\\n";
-    } else {
-        echo "Installing OpenCart database...\\n";
-        
-        // Find and execute SQL file
-        \$sql_file = '';
-        if (file_exists('/var/www/html/install/opencart.sql')) {
-            \$sql_file = '/var/www/html/install/opencart.sql';
-        } elseif (file_exists('/var/www/html/install/database.sql')) {
-            \$sql_file = '/var/www/html/install/database.sql';
-        } else {
-            // Search for SQL files in install directory
-            \$sql_files = glob('/var/www/html/install/*.sql');
-            if (!empty(\$sql_files)) {
-                \$sql_file = \$sql_files[0];
-            }
-        }
-        
-        if (\$sql_file && file_exists(\$sql_file)) {
-            echo "Using SQL file: \$sql_file\\n";
-            \$sql = file_get_contents(\$sql_file);
-            
-            // Split SQL into individual statements
-            \$statements = array_filter(array_map('trim', explode(';', \$sql)));
-            
-            foreach (\$statements as \$statement) {
-                if (!empty(\$statement)) {
-                    try {
-                        \$pdo->exec(\$statement);
-                    } catch (Exception \$e) {
-                        // Log but continue - some statements might fail due to existing data
-                        echo "Warning: " . \$e->getMessage() . "\\n";
-                    }
-                }
-            }
-            echo "Database tables created successfully\\n";
-        } else {
-            echo "Warning: No SQL installation file found, attempting to continue...\\n";
-        }
-    }
-    
-    // Wait a moment for tables to be ready
-    sleep(1);
-    
-    // Check if admin user table exists and create admin user
-    try {
-        \$stmt = \$pdo->query("DESCRIBE oc_user");
-        if (\$stmt) {
-            // Check if admin user exists
-            \$stmt = \$pdo->prepare("SELECT user_id FROM oc_user WHERE username = ?");
-            \$stmt->execute([\$admin_config['username']]);
-            
-            if (\$stmt->rowCount() > 0) {
-                echo "Admin user already exists\\n";
-            } else {
-                // Create admin user - use MD5 for compatibility with older OpenCart versions
-                \$password_hash = md5(\$admin_config['password']);
-                \$stmt = \$pdo->prepare("INSERT INTO oc_user (user_group_id, username, password, firstname, lastname, email, status, date_added) VALUES (1, ?, ?, ?, ?, ?, 1, NOW())");
-                \$stmt->execute([
-                    \$admin_config['username'],
-                    \$password_hash,
-                    \$admin_config['firstname'],
-                    \$admin_config['lastname'],
-                    \$admin_config['email']
-                ]);
-                echo "Admin user created successfully\\n";
-            }
-        }
-    } catch (Exception \$e) {
-        echo "Warning: Could not create admin user - " . \$e->getMessage() . "\\n";
-    }
-    
-    // Update store settings if settings table exists
-    try {
-        \$stmt = \$pdo->query("DESCRIBE oc_setting");
-        if (\$stmt) {
-            \$stmt = \$pdo->prepare("UPDATE oc_setting SET value = ? WHERE \\\`key\\\` = 'config_name'");
-            \$stmt->execute([\$site_config['name']]);
-            
-            \$stmt = \$pdo->prepare("UPDATE oc_setting SET value = ? WHERE \\\`key\\\` = 'config_url'");
-            \$stmt->execute([\$site_config['url'] . '/']);
-            
-            echo "Store settings updated successfully\\n";
-        }
-    } catch (Exception \$e) {
-        echo "Warning: Could not update store settings - " . \$e->getMessage() . "\\n";
-    }
-    
-    echo "OpenCart installation completed successfully!\\n";
-    
-} catch (Exception \$e) {
-    echo "Installation failed: " . \$e->getMessage() . "\\n";
-    exit(1);
-}
-?>
-EOF
-
-    # Run the installation script
-    php /tmp/install_opencart.php
-    
-    # Clean up
-    rm -f /tmp/install_opencart.php
+    # Run the automated installation
+    run_automated_installation
     
     # Remove install directory for security
     if [ -d "/var/www/html/install" ]; then
-        echo -e "${YELLOW}Removing install directory for security...${NC}"
+        log "INFO" "Removing install directory for security..."
         rm -rf /var/www/html/install
     fi
     
     # Set proper permissions
     chown -R www-data:www-data /var/www/html
     
-    echo -e "${GREEN}OpenCart installation completed successfully!${NC}"
+    log "INFO" "OpenCart installation completed successfully!"
 }
 
-# Main execution
-echo -e "${GREEN}Starting OpenCart container initialization...${NC}"
+# =============================================================================
+# MAIN EXECUTION
+# =============================================================================
+
+log "INFO" "Starting OpenCart container initialization..."
 
 # Check environment variables
 check_env_vars
@@ -350,16 +321,16 @@ wait_for_db
 
 # Check if OpenCart is installed
 if is_opencart_installed; then
-    echo -e "${GREEN}OpenCart is already installed, starting normally...${NC}"
+    log "INFO" "OpenCart is already installed, starting normally..."
 else
-    echo -e "${YELLOW}OpenCart not installed, running automatic installation...${NC}"
+    log "INFO" "OpenCart not installed, running automatic installation..."
     install_opencart
 fi
 
 # Set final permissions
 chown -R www-data:www-data /var/www/html
 
-echo -e "${GREEN}Initialization complete! Starting Apache...${NC}"
+log "INFO" "Initialization complete! Starting Apache..."
 
 # Execute the original command (start Apache)
 exec "$@"

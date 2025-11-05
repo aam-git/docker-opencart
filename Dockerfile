@@ -92,7 +92,8 @@ RUN set -xe && \
     # Cleanup
     rm "${OPENCART_FILE}" && \
     # Set proper OpenCart permissions (production-ready security model)
-    chown -R www-data:www-data /var/www/html && \
+    # Change ownership from /var/www upwards to handle volume mounts properly
+    chown -R www-data:www-data /var/www && \
     # Set directory permissions (755 - readable/executable by all, writable by owner)
     find /var/www/html -type d -exec chmod 755 {} + && \
     # Set file permissions (644 - readable by all, writable by owner only)
@@ -100,9 +101,13 @@ RUN set -xe && \
     # Set special permissions for OpenCart writable directories
     chmod 775 /var/www/html/image && \
     chmod 775 /var/www/html/system/storage && \
-    # Ensure all storage subdirectories exist and are writable by web server
+    # Create storage directory where OpenCart expects it (both locations for compatibility)
+    mkdir -p /var/www/storage/{cache,logs,download,upload,session,modification} && \
     mkdir -p /var/www/html/system/storage/{cache,logs,download,upload,session,modification} && \
-    chmod -R 775 /var/www/html/system/storage
+    # Set proper permissions for both storage locations
+    chmod -R 775 /var/www/storage && \
+    chmod -R 775 /var/www/html/system/storage && \
+    chown -R www-data:www-data /var/www/storage
 
 # =============================================================================
 # Container Configuration

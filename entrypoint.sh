@@ -115,6 +115,43 @@ validate_passwords() {
     log "INFO" "Password security validation passed"
 }
 
+# Function to ensure storage directories exist with proper permissions
+ensure_storage_directories() {
+    log "INFO" "Ensuring OpenCart storage directories exist with proper permissions..."
+    
+    # Create storage directories in both possible locations for compatibility
+    local storage_paths=(
+        "/var/www/storage"
+        "/var/www/html/system/storage"
+    )
+    
+    local storage_subdirs=("cache" "logs" "download" "upload" "session" "modification")
+    
+    for storage_path in "${storage_paths[@]}"; do
+        # Create main storage directory
+        if [ ! -d "$storage_path" ]; then
+            log "INFO" "Creating storage directory: $storage_path"
+            mkdir -p "$storage_path"
+        fi
+        
+        # Create storage subdirectories
+        for subdir in "${storage_subdirs[@]}"; do
+            if [ ! -d "$storage_path/$subdir" ]; then
+                mkdir -p "$storage_path/$subdir"
+            fi
+        done
+        
+        # Set proper permissions
+        chown -R www-data:www-data "$storage_path"
+        chmod -R 775 "$storage_path"
+    done
+    
+    # Ensure /var/www itself is owned by www-data (important for volume mounts)
+    chown www-data:www-data /var/www
+    
+    log "INFO" "Storage directories configured successfully"
+}
+
 # Function to wait for database to be ready
 wait_for_db() {
     log "INFO" "Waiting for database to be ready..."
@@ -276,6 +313,9 @@ install_opencart() {
 # =============================================================================
 
 log "INFO" "Starting OpenCart container initialization..."
+
+# Ensure storage directories exist with proper permissions
+ensure_storage_directories
 
 # Check environment variables
 check_env_vars

@@ -52,7 +52,6 @@ check_env_vars() {
     [ -z "$DB_USERNAME" ] && missing_vars+=("DB_USERNAME") 
     [ -z "$DB_PASSWORD" ] && missing_vars+=("DB_PASSWORD")
     [ -z "$DB_DATABASE" ] && missing_vars+=("DB_DATABASE")
-    [ -z "$MYSQL_ROOT_PASSWORD" ] && missing_vars+=("MYSQL_ROOT_PASSWORD")
     
     # Required OpenCart variables
     [ -z "$OPENCART_USERNAME" ] && missing_vars+=("OPENCART_USERNAME")
@@ -72,9 +71,9 @@ check_env_vars() {
 validate_passwords() {
     log "INFO" "Validating password security requirements..."
     
-    # Check MySQL root password strength
-    if [ ${#MYSQL_ROOT_PASSWORD} -lt 8 ]; then
-        log "ERROR" "MYSQL_ROOT_PASSWORD must be at least 8 characters long"
+    # Check database password strength
+    if [ ${#DB_PASSWORD} -lt 8 ]; then
+        log "ERROR" "DB_PASSWORD must be at least 8 characters long"
         exit 1
     fi
     
@@ -87,7 +86,7 @@ validate_passwords() {
     # Check for common weak passwords
     local weak_passwords=("password" "123456" "admin" "root" "test")
     for weak in "${weak_passwords[@]}"; do
-        if [ "$MYSQL_ROOT_PASSWORD" = "$weak" ] || [ "$OPENCART_PASSWORD" = "$weak" ]; then
+        if [ "$DB_PASSWORD" = "$weak" ] || [ "$OPENCART_PASSWORD" = "$weak" ]; then
             log "ERROR" "Weak password detected. Please use a stronger password."
             exit 1
         fi

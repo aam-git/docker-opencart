@@ -260,10 +260,8 @@ install_opencart() {
             rm -rf /var/www/html/install
         fi
         
-        # Set proper permissions
-        chown -R www-data:www-data /var/www/html
-        
-        # Make config files read-only after installation
+        # Ensure config files have proper ownership and are read-only after installation
+        chown www-data:www-data /var/www/html/config.php /var/www/html/admin/config.php 2>/dev/null || true
         chmod 644 /var/www/html/config.php /var/www/html/admin/config.php 2>/dev/null || true
         
         log "INFO" "OpenCart installation and security hardening completed!"
@@ -295,9 +293,6 @@ else
     log "INFO" "OpenCart not installed, running automatic installation..."
     install_opencart
 fi
-
-# Set final permissions
-chown -R www-data:www-data /var/www/html
 
 log "INFO" "Initialization complete! Starting Apache..."
 

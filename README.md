@@ -132,9 +132,9 @@ The container performs intelligent automation on startup:
 │   OpenCart      │    │     MySQL       │
 │   Container     │◄──►│   Container     │
 │                 │    │                 │
-│ • PHP 8.3       │    │ • MySQL 8.4     │
+│ • PHP 8.4       │    │ • MySQL 9.5     │
 │ • Apache 2      │    │ • Persistent    │
-│ • OpenCart 4.1  │    │   Storage        │
+│ • OpenCart 3.0  │    │   Storage       │
 └─────────────────┘    └─────────────────┘
 ```
 

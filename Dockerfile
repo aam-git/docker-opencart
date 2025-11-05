@@ -1,5 +1,5 @@
 # =============================================================================
-# OpenCart 4.1.0.3 Docker Container
+# OpenCart 3.0.4.1 Docker Container
 # =============================================================================
 # 
 # Production-ready OpenCart e-commerce platform with automated installation
@@ -18,8 +18,8 @@ FROM php:8.4-apache
 
 # Metadata labels following OCI specification
 LABEL org.opencontainers.image.title="OpenCart Docker Container"
-LABEL org.opencontainers.image.description="Production-ready OpenCart 4.1.0.3 with automated installation"
-LABEL org.opencontainers.image.version="4.1.0.3"
+LABEL org.opencontainers.image.description="Production-ready OpenCart 3.0.4.1 with automated installation"
+LABEL org.opencontainers.image.version="3.0.4.1"
 LABEL org.opencontainers.image.authors="Aaron Moy <info@aamservices.uk>"
 LABEL org.opencontainers.image.url="https://github.com/aam-git/docker-opencart"
 LABEL org.opencontainers.image.source="https://github.com/aam-git/docker-opencart"
@@ -70,8 +70,8 @@ RUN set -xe && \
 WORKDIR /var/www/html
 
 # OpenCart version and download configuration
-ENV OPENCART_VER=4.1.0.3 \
-    OPENCART_MD5=8e6bc1f65e56b31344162cec6370ad9d \
+ENV OPENCART_VER=3.0.4.1 \
+    OPENCART_MD5=f1cd69918494928fd2f13c948be0ba55 \
     OPENCART_FILE=opencart.zip
 
 ENV OPENCART_URL=https://github.com/opencart/opencart/releases/download/${OPENCART_VER}/opencart-${OPENCART_VER}.zip

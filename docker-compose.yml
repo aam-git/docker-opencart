@@ -27,13 +27,21 @@ services:
       - DB_DATABASE=${DB_DATABASE:-opencart}
       - DB_USERNAME=${DB_USERNAME:-root}
       - DB_PASSWORD=${DB_PASSWORD:-please_change_this_password}
+      - DB_DRIVER=${DB_DRIVER:-mysqli}
+      - DB_PREFIX=${DB_PREFIX:-oc_}
       # OpenCart admin user settings
       - OPENCART_USERNAME=${OPENCART_USERNAME:-admin}
       - OPENCART_PASSWORD=${OPENCART_PASSWORD:-please_change_this_password}
       - OPENCART_EMAIL=${OPENCART_EMAIL:-admin@example.com}
+      - OPENCART_FIRSTNAME=${OPENCART_FIRSTNAME:-Admin}
+      - OPENCART_LASTNAME=${OPENCART_LASTNAME:-User}
       # Site configuration
       - OPENCART_SITE_NAME=${OPENCART_SITE_NAME:-My OpenCart Store}
       - OPENCART_SITE_URL=${OPENCART_SITE_URL:-http://localhost}
+      - OPENCART_LANGUAGE=${OPENCART_LANGUAGE:-en-gb}
+      # PHP configuration
+      - PHP_MAX_EXECUTION_TIME=${PHP_MAX_EXECUTION_TIME:-300}
+      - PHP_MEMORY_LIMIT=${PHP_MEMORY_LIMIT:-256M}
 volumes:
   database_data:
     driver: local

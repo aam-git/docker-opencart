@@ -6,11 +6,20 @@
 # This script handles automated OpenCart installation and configuration
 # 
 # Features:
-# - Environment variable validation
+# - Environment variable validation with extensive configuration options
 # - Password security enforcement
-# - Database connection testing
-# - Automated OpenCart installation
-# - Security hardening
+# - Database connection testing with configurable drivers and prefixes
+# - Automated OpenCart installation (v3.x and v4.x compatible)
+# - Multi-language support (v4.x)
+# - Multi-store support via configurable table prefixes
+# - Security hardening and proper permissions
+# - Version auto-detection and parameter adaptation
+#
+# Supported Environment Variables:
+# - Database: DB_HOSTNAME, DB_PORT, DB_DATABASE, DB_USERNAME, DB_PASSWORD, DB_DRIVER, DB_PREFIX
+# - Admin User: OPENCART_USERNAME, OPENCART_PASSWORD, OPENCART_EMAIL, OPENCART_FIRSTNAME, OPENCART_LASTNAME
+# - Site Config: OPENCART_SITE_NAME, OPENCART_SITE_URL, OPENCART_LANGUAGE
+# - PHP Config: PHP_MAX_EXECUTION_TIME, PHP_MEMORY_LIMIT
 #
 # =============================================================================
 
@@ -57,6 +66,17 @@ check_env_vars() {
     [ -z "$OPENCART_USERNAME" ] && missing_vars+=("OPENCART_USERNAME")
     [ -z "$OPENCART_PASSWORD" ] && missing_vars+=("OPENCART_PASSWORD") 
     [ -z "$OPENCART_EMAIL" ] && missing_vars+=("OPENCART_EMAIL")
+    
+    # Set defaults for optional variables
+    DB_DRIVER="${DB_DRIVER:-mysqli}"
+    DB_PREFIX="${DB_PREFIX:-oc_}"
+    OPENCART_LANGUAGE="${OPENCART_LANGUAGE:-en-gb}"
+    OPENCART_FIRSTNAME="${OPENCART_FIRSTNAME:-Admin}"
+    OPENCART_LASTNAME="${OPENCART_LASTNAME:-User}"
+    
+    log "INFO" "Using database driver: $DB_DRIVER"
+    log "INFO" "Using database prefix: $DB_PREFIX"
+    log "INFO" "Using OpenCart language: $OPENCART_LANGUAGE"
     
     if [ ${#missing_vars[@]} -ne 0 ]; then
         log "ERROR" "Missing required environment variables: ${missing_vars[*]}"
@@ -116,136 +136,74 @@ wait_for_db() {
 
 # Function to run automated OpenCart installation
 run_automated_installation() {
-    log "INFO" "Starting automated OpenCart installation..."
+    log "INFO" "Starting automated OpenCart installation using OpenCart's CLI installer..."
 
-    # Attempt to import SQL using the mysql CLI (more reliable than naive PHP splitting)
-    log "INFO" "Looking for SQL dump to import using mysql client..."
-    sql_file=''
-    if [ -f /var/www/html/install/opencart.sql ]; then
-        sql_file='/var/www/html/install/opencart.sql'
-    elif [ -f /var/www/html/install/database.sql ]; then
-        sql_file='/var/www/html/install/database.sql'
-    else
-        globs=(/var/www/html/install/*.sql)
-        if [ -f "${globs[0]}" ]; then
-            sql_file="${globs[0]}"
-        fi
+    # Ensure config files exist (rename from dist versions)
+    if [ ! -f "/var/www/html/config.php" ] && [ -f "/var/www/html/config-dist.php" ]; then
+        log "INFO" "Creating config.php from config-dist.php"
+        cp /var/www/html/config-dist.php /var/www/html/config.php
+    fi
+    
+    if [ ! -f "/var/www/html/admin/config.php" ] && [ -f "/var/www/html/admin/config-dist.php" ]; then
+        log "INFO" "Creating admin/config.php from admin/config-dist.php"
+        cp /var/www/html/admin/config-dist.php /var/www/html/admin/config.php
     fi
 
-    if [ -n "$sql_file" ] && [ -f "$sql_file" ]; then
-        log "INFO" "Found SQL file: $sql_file"
-        if command -v mysql >/dev/null 2>&1; then
-            log "INFO" "Importing SQL file into database $DB_DATABASE using mysql CLI..."
-            if mysql -h "$DB_HOSTNAME" -P "$DB_PORT" -u "$DB_USERNAME" -p"$DB_PASSWORD" "$DB_DATABASE" < "$sql_file"; then
-                log "INFO" "SQL import completed successfully."
-            else
-                log "WARN" "mysql CLI reported errors during import. Check logs above for details."
-            fi
+    # Make config files writable for installation
+    chmod 666 /var/www/html/config.php /var/www/html/admin/config.php
+
+    # Use OpenCart's official CLI installer
+    log "INFO" "Running OpenCart CLI installation..."
+    if [ -f "/var/www/html/install/cli_install.php" ]; then
+        cd /var/www/html
+        
+        # Detect OpenCart version by checking SQL file structure
+        if [ -f "/var/www/html/install/opencart-${OPENCART_LANGUAGE}.sql" ] || [ -f "/var/www/html/install/opencart-en-gb.sql" ]; then
+            # OpenCart v4+ with language-specific SQL files
+            log "INFO" "Detected OpenCart v4+ - using language parameter: $OPENCART_LANGUAGE"
+            php install/cli_install.php install \
+                --username "$OPENCART_USERNAME" \
+                --email "$OPENCART_EMAIL" \
+                --password "$OPENCART_PASSWORD" \
+                --http_server "$OPENCART_SITE_URL/" \
+                --language "$OPENCART_LANGUAGE" \
+                --db_driver "$DB_DRIVER" \
+                --db_hostname "$DB_HOSTNAME" \
+                --db_username "$DB_USERNAME" \
+                --db_password "$DB_PASSWORD" \
+                --db_database "$DB_DATABASE" \
+                --db_port "$DB_PORT" \
+                --db_prefix "$DB_PREFIX"
+        elif [ -f "/var/www/html/install/opencart.sql" ]; then
+            # OpenCart v3.x with single SQL file
+            log "INFO" "Detected OpenCart v3.x - using legacy parameters"
+            php install/cli_install.php install \
+                --username "$OPENCART_USERNAME" \
+                --email "$OPENCART_EMAIL" \
+                --password "$OPENCART_PASSWORD" \
+                --http_server "$OPENCART_SITE_URL/" \
+                --db_driver "$DB_DRIVER" \
+                --db_hostname "$DB_HOSTNAME" \
+                --db_username "$DB_USERNAME" \
+                --db_password "$DB_PASSWORD" \
+                --db_database "$DB_DATABASE" \
+                --db_port "$DB_PORT" \
+                --db_prefix "$DB_PREFIX"
         else
-            log "WARN" "mysql client not found in container. Cannot import SQL file automatically."
+            log "ERROR" "Could not find OpenCart SQL installation files"
+            return 1
+        fi
+        
+        if [ $? -eq 0 ]; then
+            log "INFO" "OpenCart CLI installation completed successfully!"
+        else
+            log "ERROR" "OpenCart CLI installation failed!"
+            return 1
         fi
     else
-        log "INFO" "No SQL file found to import; proceeding and will attempt to create admin user if tables exist."
+        log "ERROR" "OpenCart CLI installer not found at /var/www/html/install/cli_install.php"
+        return 1
     fi
-
-    # Create a small PHP finalizer to ensure admin user and basic settings
-    log "INFO" "Preparing inline PHP finalizer to create admin user and finalize settings..."
-    cat > /tmp/install_opencart.php << 'EOF'
-<?php
-// Minimal PHP finalizer: ensure admin user exists and update basic settings
-set_time_limit(0);
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-
-$db_config = [
-    'host' => getenv('DB_HOSTNAME') ?: 'database',
-    'port' => getenv('DB_PORT') ?: 3306,
-    'database' => getenv('DB_DATABASE') ?: 'opencart',
-    'username' => getenv('DB_USERNAME') ?: 'root',
-    'password' => getenv('DB_PASSWORD') ?: '',
-    'prefix' => 'oc_'
-];
-
-try {
-    $dsn = sprintf('mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4', $db_config['host'], $db_config['port'], $db_config['database']);
-    $pdo = new PDO($dsn, $db_config['username'], $db_config['password'], [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_EMULATE_PREPARES => false,
-    ]);
-} catch (PDOException $e) {
-    echo "ERROR: Could not connect to database: " . $e->getMessage() . "\n";
-    exit(1);
-}
-
-// Check if user table exists
-try {
-    $prefix = $db_config['prefix'];
-    $stmt = $pdo->query("SHOW TABLES LIKE '{$prefix}user'");
-    if ($stmt && $stmt->rowCount() > 0) {
-        echo "User table exists. Ensuring admin user and settings...\n";
-    } else {
-        echo "No user table found. Database import may have failed; please check logs.\n";
-        exit(0);
-    }
-} catch (PDOException $e) {
-    echo "ERROR checking database tables: " . $e->getMessage() . "\n";
-    exit(1);
-}
-
-// Create admin user if not exists
-try {
-    $stmt = $pdo->query("SELECT COUNT(*) as c FROM `{$prefix}user` LIMIT 1");
-    $row = $stmt->fetch(PDO::FETCH_ASSOC);
-    if ($row && intval($row['c']) > 0) {
-        echo "Admin user(s) exist, skipping creation.\n";
-    } else {
-        echo "Creating admin user...\n";
-        $salt = substr(md5(uniqid('', true)), 0, 9);
-        $password = getenv('OPENCART_PASSWORD') ?: 'admin';
-        $password_hash = md5($salt . md5($password));
-        $username = getenv('OPENCART_USERNAME') ?: 'admin';
-        $email = getenv('OPENCART_EMAIL') ?: 'admin@example.com';
-        $now = date('Y-m-d H:i:s');
-        $pdo->exec("INSERT INTO `{$prefix}user` (`username`,`password`,`salt`,`firstname`,`lastname`,`email`,`status`,`date_added`,`user_group`) VALUES (" .
-            $pdo->quote($username) . "," . $pdo->quote($password_hash) . "," . $pdo->quote($salt) . "," . $pdo->quote('Admin') . "," . $pdo->quote('User') . "," . $pdo->quote($email) . ",1," . $pdo->quote($now) . ",1)");
-        echo "Admin user created.\n";
-    }
-} catch (PDOException $e) {
-    echo "WARN: Could not create admin user: " . $e->getMessage() . "\n";
-}
-
-// Update config settings (site name and url)
-try {
-    $site_name = getenv('OPENCART_SITE_NAME') ?: 'OpenCart';
-    $site_url = getenv('OPENCART_SITE_URL') ?: 'http://localhost';
-    $pdo->exec("UPDATE `{$prefix}setting` SET `value` = " . $pdo->quote($site_name) . " WHERE `key` = 'config_name'");
-    $pdo->exec("UPDATE `{$prefix}setting` SET `value` = " . $pdo->quote($site_url) . " WHERE `key` = 'config_url'");
-} catch (Exception $e) {
-    echo "WARN: Could not update settings: " . $e->getMessage() . "\n";
-}
-
-echo "OpenCart finalizer finished.\n";
-
-EOF
-
-    log "INFO" "Attempting to run inline PHP finalizer..."
-    if php /tmp/install_opencart.php; then
-        log "INFO" "OpenCart admin user and settings finalized."
-    else
-        log "WARN" "Inline PHP finalizer reported issues. See above for details."
-    fi
-
-    # Clean up
-    rm -f /tmp/install_opencart.php || true
-
-    # Remove install directory for security
-    if [ -d "/var/www/html/install" ]; then
-        echo -e "${YELLOW}Removing install directory for security...${NC}"
-        rm -rf /var/www/html/install
-    fi
-
-    # Set proper permissions
-    chown -R www-data:www-data /var/www/html
 
     log "INFO" "OpenCart installation finalization completed!"
 }
@@ -254,15 +212,34 @@ EOF
 is_opencart_installed() {
     log "INFO" "Checking if OpenCart is already installed..."
     
-    # Check if config.php has been modified from default
-    if [ -f "/var/www/html/config.php" ]; then
-        # Check if config.php contains actual database configuration
+    # Check if config.php has been modified from default and install directory is gone
+    if [ -f "/var/www/html/config.php" ] && [ ! -d "/var/www/html/install" ]; then
+        # Check if config.php contains actual database configuration (not default values)
         if grep -q "define('DB_HOSTNAME'" /var/www/html/config.php && \
            grep -q "define('DB_USERNAME'" /var/www/html/config.php && \
-           ! grep -q "localhost" /var/www/html/config.php; then
-            log "INFO" "OpenCart appears to be already installed"
+           ! grep -q "DB_HOSTNAME', ''" /var/www/html/config.php && \
+           ! grep -q "DB_USERNAME', ''" /var/www/html/config.php; then
+            log "INFO" "OpenCart appears to be already installed (config exists and install dir removed)"
             return 0  # Installed
         fi
+    fi
+    
+    # Also check if we can connect to database and find OpenCart tables
+    local prefix="${DB_PREFIX:-oc_}"
+    if php -r "
+        try {
+            \$pdo = new PDO('mysql:host=$DB_HOSTNAME;port=${DB_PORT:-3306};dbname=$DB_DATABASE', '$DB_USERNAME', '$DB_PASSWORD');
+            \$stmt = \$pdo->query('SHOW TABLES LIKE \"${prefix}user\"');
+            if (\$stmt && \$stmt->rowCount() > 0) {
+                exit(0); // Tables exist
+            }
+            exit(1); // No tables
+        } catch (Exception \$e) {
+            exit(1); // Connection failed
+        }
+    " 2>/dev/null; then
+        log "INFO" "OpenCart database tables found - installation appears complete"
+        return 0  # Installed
     fi
     
     log "INFO" "OpenCart is not installed yet"
@@ -273,34 +250,27 @@ is_opencart_installed() {
 install_opencart() {
     log "INFO" "Installing OpenCart automatically..."
     
-    # Update config files with database settings
-    log "INFO" "Updating configuration files with database settings..."
-    sed -i "s/define('DB_HOSTNAME', 'localhost');/define('DB_HOSTNAME', '$DB_HOSTNAME');/" /var/www/html/config.php
-    sed -i "s/define('DB_USERNAME', '');/define('DB_USERNAME', '$DB_USERNAME');/" /var/www/html/config.php
-    sed -i "s/define('DB_PASSWORD', '');/define('DB_PASSWORD', '$DB_PASSWORD');/" /var/www/html/config.php
-    sed -i "s/define('DB_DATABASE', '');/define('DB_DATABASE', '$DB_DATABASE');/" /var/www/html/config.php
-    sed -i "s/define('DB_PORT', '3306');/define('DB_PORT', '$DB_PORT');/" /var/www/html/config.php
-    
-    # Update admin config
-    sed -i "s/define('DB_HOSTNAME', 'localhost');/define('DB_HOSTNAME', '$DB_HOSTNAME');/" /var/www/html/admin/config.php
-    sed -i "s/define('DB_USERNAME', '');/define('DB_USERNAME', '$DB_USERNAME');/" /var/www/html/admin/config.php
-    sed -i "s/define('DB_PASSWORD', '');/define('DB_PASSWORD', '$DB_PASSWORD');/" /var/www/html/admin/config.php
-    sed -i "s/define('DB_DATABASE', '');/define('DB_DATABASE', '$DB_DATABASE');/" /var/www/html/admin/config.php
-    sed -i "s/define('DB_PORT', '3306');/define('DB_PORT', '$DB_PORT');/" /var/www/html/admin/config.php
-    
-    # Run the automated installation
-    run_automated_installation
-    
-    # Remove install directory for security
-    if [ -d "/var/www/html/install" ]; then
-        log "INFO" "Removing install directory for security..."
-        rm -rf /var/www/html/install
+    # Run the automated installation using OpenCart's CLI installer
+    if run_automated_installation; then
+        log "INFO" "OpenCart installation completed successfully!"
+        
+        # Remove install directory for security (CLI installer handles config file creation)
+        if [ -d "/var/www/html/install" ]; then
+            log "INFO" "Removing install directory for security..."
+            rm -rf /var/www/html/install
+        fi
+        
+        # Set proper permissions
+        chown -R www-data:www-data /var/www/html
+        
+        # Make config files read-only after installation
+        chmod 644 /var/www/html/config.php /var/www/html/admin/config.php 2>/dev/null || true
+        
+        log "INFO" "OpenCart installation and security hardening completed!"
+    else
+        log "ERROR" "OpenCart installation failed!"
+        return 1
     fi
-    
-    # Set proper permissions
-    chown -R www-data:www-data /var/www/html
-    
-    log "INFO" "OpenCart installation completed successfully!"
 }
 
 # =============================================================================

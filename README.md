@@ -2,8 +2,8 @@
 
 [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
 [![OpenCart](https://img.shields.io/badge/OpenCart-v3%20%7C%20v4-blue?style=for-the-badge)](https://www.opencart.com/)
-[![PHP](https://img.shields.io/badge/PHP-8.3--apache-777BB4?style=for-the-badge&logo=php&logoColor=white)](https://php.net/)
-[![MySQL](https://img.shields.io/badge/MySQL-8.4-4479A1?style=for-the-badge&logo=mysql&logoColor=white)](https://mysql.com/)
+[![PHP](https://img.shields.io/badge/PHP-8.4--apache-777BB4?style=for-the-badge&logo=php&logoColor=white)](https://php.net/)
+[![MySQL](https://img.shields.io/badge/MySQL-9.5-4479A1?style=for-the-badge&logo=mysql&logoColor=white)](https://mysql.com/)
 
 A production-ready, fully automated Docker setup for [OpenCart](https://www.opencart.com/) e-commerce platform with zero-configuration deployment. Supports both OpenCart v3.x and v4.x with automatic version detection.
 
@@ -55,8 +55,8 @@ All configuration is managed through environment variables in your `.env` file. 
 #### 🐳 Container Configuration
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `MYSQL_VERSION` | MySQL Docker image version | `8.4` |
-| `OPENCART_IMAGE` | OpenCart Docker image | `ghcr.io/aam-git/docker-opencart:testing` |
+| `MYSQL_VERSION` | MySQL Docker image version | `9.5` |
+| `OPENCART_IMAGE` | OpenCart Docker image | `ghcr.io/aam-git/docker-opencart:latest` |
 | `HTTP_PORT` | HTTP port mapping | `80` |
 | `HTTPS_PORT` | HTTPS port mapping | `443` |
 | `MYSQL_PORT` | MySQL port mapping | `3306` |

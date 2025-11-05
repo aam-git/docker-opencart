@@ -95,15 +95,12 @@ RUN set -xe && \
     # Change ownership from /var/www upwards to handle volume mounts properly
     chown -R www-data:www-data /var/www && \
     # Set directory permissions (755 - readable/executable by all, writable by owner)
-    find /var/www/html -type d -exec chmod 755 {} + && \
+    find /var/www -type d -exec chmod 755 {} + && \
     # Set file permissions (644 - readable by all, writable by owner only)
-    find /var/www/html -type f -exec chmod 644 {} + && \
+    find /var/www -type f -exec chmod 644 {} + && \
     # Set special permissions for OpenCart writable directories
     chmod 775 /var/www/html/image && \
-    chmod 775 /var/www/html/system/storage && \
-    # Create storage directory where OpenCart v3 expects it
-    mkdir -p /var/www/storage/{cache,logs,download,upload,session,modification} && \
-    chmod -R 775 /var/www/storage
+    chmod 775 /var/www/html/system/storage
 
 # =============================================================================
 # Container Configuration

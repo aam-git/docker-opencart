@@ -2,8 +2,8 @@
 # Dockerfile for opencart
 #
 
-FROM php:8.0-apache-bullseye
-MAINTAINER aaron <info@aamservices.uk>
+FROM php:8.1-apache-bookworm
+LABEL maintainer="aaron <info@aamservices.uk>"
 
 RUN a2enmod rewrite headers
 
@@ -17,19 +17,19 @@ RUN set -eux \
 
 WORKDIR /var/www/html
 
-ENV OPENCART_VER 3.0.3.8
-ENV OPENCART_MD5 6379052A48DCF445D189BE9E545DD2A6
-ENV OPENCART_URL https://github.com/opencart/opencart/releases/download/${OPENCART_VER}/opencart-${OPENCART_VER}.zip
-ENV OPENCART_FILE opencart.zip
+ENV OPENCART_VER=3.0.3.8
+ENV OPENCART_MD5=6379052A48DCF445D189BE9E545DD2A6
+ENV OPENCART_URL=https://github.com/opencart/opencart/releases/download/${OPENCART_VER}/opencart-${OPENCART_VER}.zip
+ENV OPENCART_FILE=opencart.zip
 
-RUN set -xe \
-    && curl -sSL ${OPENCART_URL} -o ${OPENCART_FILE} \
+RUN set -eux \
+    && curl -sSL "${OPENCART_URL}" -o "${OPENCART_FILE}" \
     && echo "${OPENCART_MD5}  ${OPENCART_FILE}" | md5sum -c \
-    && unzip ${OPENCART_FILE} 'upload/*' -d /var/www/html/ \
+    && unzip "${OPENCART_FILE}" 'upload/*' -d /var/www/html/ \
     && mv /var/www/html/upload/* /var/www/html/ \
     && rm -r /var/www/html/upload/ \
     && mv config-dist.php config.php \
     && mv admin/config-dist.php admin/config.php \
-    && rm ${OPENCART_FILE} \
+    && rm "${OPENCART_FILE}" \
     && sed -i 's/MYSQL40//g' install/model/install/install.php \
     && chown -R www-data:www-data /var/www

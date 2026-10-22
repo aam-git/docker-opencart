@@ -2,20 +2,18 @@
 # Dockerfile for opencart
 #
 
-FROM php:8.0-apache
+FROM php:8.0-apache-bullseye
 MAINTAINER aaron <info@aamservices.uk>
 
 RUN a2enmod rewrite headers
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends git zip libzip-dev
-
-RUN set -xe \
-    && apt update \
-    && apt install -y libpng-dev libjpeg-dev libwebp-dev unzip \
+RUN set -eux \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        git zip unzip libzip-dev libpng-dev libjpeg-dev libwebp-dev \
     && rm -rf /var/lib/apt/lists/* \
-    && docker-php-ext-configure gd --with-jpeg=/usr --with-webp=/usr \
-    && docker-php-ext-install gd mysqli pdo_mysql zip
+    && docker-php-ext-configure gd --with-jpeg --with-webp \
+    && docker-php-ext-install -j"$(nproc)" gd mysqli pdo_mysql zip
 
 WORKDIR /var/www/html
 
@@ -33,5 +31,5 @@ RUN set -xe \
     && mv config-dist.php config.php \
     && mv admin/config-dist.php admin/config.php \
     && rm ${OPENCART_FILE} \
-	&& sed -i 's/MYSQL40//g' install/model/install/install.php \
+    && sed -i 's/MYSQL40//g' install/model/install/install.php \
     && chown -R www-data:www-data /var/www

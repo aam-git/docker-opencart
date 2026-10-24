@@ -297,8 +297,14 @@ function define_install_paths(): void
     if (!defined('DIR_LOGS')) {
         define('DIR_LOGS', $storage . 'logs/');
     }
+    // Ignore the shop's compiled modification cache. Those files were built for
+    // the old release and can refer to VERSION, which only index.php defines.
     if (!defined('DIR_MODIFICATION')) {
-        define('DIR_MODIFICATION', $storage . 'modification/');
+        $upgradeModification = '/tmp/opencart-upgrade-modification/';
+        if (!is_dir($upgradeModification)) {
+            mkdir($upgradeModification, 0775, true);
+        }
+        define('DIR_MODIFICATION', $upgradeModification);
     }
     if (!defined('DIR_DOWNLOAD')) {
         define('DIR_DOWNLOAD', $storage . 'download/');
@@ -352,6 +358,10 @@ function run_upgrade_models(array $settings): void
     $_SERVER['HTTP_HOST'] = $_SERVER['HTTP_HOST'] ?? 'localhost';
     $_SERVER['SERVER_PORT'] = $_SERVER['SERVER_PORT'] ?? '80';
     $_SERVER['DOCUMENT_ROOT'] = HTML_ROOT;
+
+    if (!defined('VERSION')) {
+        define('VERSION', OPENCART_VERSION);
+    }
 
     require_once DIR_SYSTEM . 'startup.php';
 

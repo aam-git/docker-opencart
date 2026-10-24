@@ -2,7 +2,7 @@
 
 [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
 [![OpenCart](https://img.shields.io/badge/OpenCart-3.0.5.1-blue?style=for-the-badge)](https://www.opencart.com/)
-[![PHP](https://img.shields.io/badge/PHP-8.5--apache-777BB4?style=for-the-badge&logo=php&logoColor=white)](https://php.net/)
+[![PHP](https://img.shields.io/badge/PHP-8.4--apache-777BB4?style=for-the-badge&logo=php&logoColor=white)](https://php.net/)
 [![MySQL](https://img.shields.io/badge/MySQL-8.0-4479A1?style=for-the-badge&logo=mysql&logoColor=white)](https://mysql.com/)
 
 A production-ready, fully automated Docker setup for the [OpenCart](https://www.opencart.com/) e-commerce platform. It installs a new shop on first start, and it upgrades an existing 3.0.3 or 3.0.4 shop when you change the image tag. Your compose file, configuration, and uploaded files stay in place.
@@ -184,7 +184,7 @@ The command-line installer is never run against an existing shop. That installer
 │   OpenCart      │    │     MySQL       │
 │   Container     │◄──►│   Container     │
 │                 │    │                 │
-│ • PHP 8.5       │    │ • MySQL 8.0     │
+│ • PHP 8.4       │    │ • MySQL 8.0     │
 │ • Apache        │    │ • or Percona 8  │
 │ • OpenCart      │    │ • Persistent    │
 │   3.0.5.1       │    │   storage       │

@@ -2,17 +2,17 @@
 # OpenCart 3.0.5.1 Docker Container
 # =============================================================================
 #
-# PHP 8.5 with Apache. Existing 3.0.3.x stores mounted at /var/www are
+# PHP 8.4 with Apache. Existing 3.0.3.x stores mounted at /var/www are
 # upgraded in place. New stores can be installed from the CLI or the web installer.
 #
 # Author: Aaron M <info@aamservices.uk>
 # Repository: https://github.com/aam-git/docker-opencart
 # =============================================================================
 
-FROM php:8.5-apache
+FROM php:8.4-apache
 
 LABEL org.opencontainers.image.title="OpenCart Docker Container"
-LABEL org.opencontainers.image.description="OpenCart 3.0.5.1 on PHP 8.5, compatible with existing 3.0.3.x volumes"
+LABEL org.opencontainers.image.description="OpenCart 3.0.5.1 on PHP 8.4, compatible with existing 3.0.3.x volumes"
 LABEL org.opencontainers.image.version="3.0.5.1"
 LABEL org.opencontainers.image.authors="Aaron Moy <info@aamservices.uk>"
 LABEL org.opencontainers.image.url="https://github.com/aam-git/docker-opencart"
@@ -20,8 +20,8 @@ LABEL org.opencontainers.image.source="https://github.com/aam-git/docker-opencar
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL maintainer="aaron <info@aamservices.uk>"
 
-# mbstring on PHP 8.5 needs Oniguruma headers. The official image does not ship them.
-# Extensions are installed one at a time. A parallel install on PHP 8.5 deletes modules/ mid-copy.
+# mbstring on PHP 8.4 needs Oniguruma headers. The official image does not ship them.
+# Extensions are installed one at a time. A parallel install can delete modules/ mid-copy.
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \

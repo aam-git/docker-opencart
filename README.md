@@ -342,6 +342,11 @@ OpenCart 4 is a different image. This branch does not install it.
 - A SQL dump is in the storage `backup/` directory when the dump itself succeeded
 - Fix the cause and start the container again. It retries the schema upgrade
 
+**The dump reports that the database certificate is not trusted**
+
+- MySQL and Percona create their own certificate. The dump still connects, and it does not require that certificate to be signed by a public authority
+- The schema is not changed when the dump fails. Start the container again after pulling the image that contains this fix
+
 **Extensions look missing after the upgrade**
 
 - The extension files are still on disk

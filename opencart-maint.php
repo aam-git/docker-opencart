@@ -230,6 +230,9 @@ function dump_database(array $settings, string $destination): void
         '--default-character-set=utf8mb4',
         '--routines',
         '--triggers',
+        // MariaDB 11 verifies TLS certificates. MySQL and Percona Docker servers
+        // present a self-signed certificate, which makes the dump fail closed.
+        '--skip-ssl-verify-server-cert',
         $settings['database'],
     ];
 

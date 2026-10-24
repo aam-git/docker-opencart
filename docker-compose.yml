@@ -1,49 +1,48 @@
-version: '3.2'
 services:
-  database:
-    image: mysql:${MYSQL_VERSION:-9.5}
+  mysql:
+    image: ${MYSQL_IMAGE:-mysql:8.0}
+    command:
+      - --default-authentication-plugin=mysql_native_password
     environment:
-      - MYSQL_DATABASE=${DB_DATABASE:-opencart}
-      - MYSQL_ROOT_PASSWORD=${DB_PASSWORD:-please_change_this_password}
+      MYSQL_DATABASE: ${DB_DATABASE:-opencart}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-please_change_this_password}
     restart: always
     volumes:
-      - database_data:/var/lib/mysql
+      - mysql_data:/var/lib/mysql
     ports:
-      - "${MYSQL_PORT:-3306}:3306"
+      - "127.0.0.1:${MYSQL_PORT:-3306}:3306"
   opencart:
-    image: ${OPENCART_IMAGE:-ghcr.io/aam-git/docker-opencart:latest}
+    image: ${OPENCART_IMAGE:-ghcr.io/aam-git/docker-opencart:3.0.5.1}
     restart: always
+    expose:
+      - "80"
+      - "443"
     ports:
-      - '${HTTP_PORT:-80}:80'
-      - '${HTTPS_PORT:-443}:443'
+      - "${HTTP_PORT:-80}:80"
     volumes:
-      - opencart_data:/var/www/html
+      # The whole /var/www tree, including html/ and a storage directory moved beside it.
+      - opencart_data:/var/www
     depends_on:
-      - database
+      - mysql
     environment:
-      # Database connection settings
-      - DB_HOSTNAME=${DB_HOSTNAME:-database}
-      - DB_PORT=${DB_PORT:-3306}
-      - DB_DATABASE=${DB_DATABASE:-opencart}
-      - DB_USERNAME=${DB_USERNAME:-root}
-      - DB_PASSWORD=${DB_PASSWORD:-please_change_this_password}
-      - DB_DRIVER=${DB_DRIVER:-mysqli}
-      - DB_PREFIX=${DB_PREFIX:-oc_}
-      # OpenCart admin user settings
-      - OPENCART_USERNAME=${OPENCART_USERNAME:-admin}
-      - OPENCART_PASSWORD=${OPENCART_PASSWORD:-please_change_this_password}
-      - OPENCART_EMAIL=${OPENCART_EMAIL:-admin@example.com}
-      - OPENCART_FIRSTNAME=${OPENCART_FIRSTNAME:-Admin}
-      - OPENCART_LASTNAME=${OPENCART_LASTNAME:-User}
-      # Site configuration
-      - OPENCART_SITE_NAME=${OPENCART_SITE_NAME:-My OpenCart Store}
-      - OPENCART_SITE_URL=${OPENCART_SITE_URL:-http://localhost}
-      - OPENCART_LANGUAGE=${OPENCART_LANGUAGE:-en-gb}
-      # PHP configuration
-      - PHP_MAX_EXECUTION_TIME=${PHP_MAX_EXECUTION_TIME:-300}
-      - PHP_MEMORY_LIMIT=${PHP_MEMORY_LIMIT:-256M}
+      DB_HOSTNAME: ${DB_HOSTNAME:-mysql}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_DATABASE: ${DB_DATABASE:-opencart}
+      DB_USERNAME: ${DB_USERNAME:-root}
+      DB_PASSWORD: ${DB_PASSWORD:-please_change_this_password}
+      DB_DRIVER: ${DB_DRIVER:-mysqli}
+      DB_PREFIX: ${DB_PREFIX:-oc_}
+      OPENCART_USERNAME: ${OPENCART_USERNAME:-admin}
+      OPENCART_PASSWORD: ${OPENCART_PASSWORD:-please_change_this_password}
+      OPENCART_EMAIL: ${OPENCART_EMAIL:-admin@example.com}
+      OPENCART_FIRSTNAME: ${OPENCART_FIRSTNAME:-}
+      OPENCART_LASTNAME: ${OPENCART_LASTNAME:-}
+      OPENCART_SITE_NAME: ${OPENCART_SITE_NAME:-}
+      OPENCART_SITE_URL: ${OPENCART_SITE_URL:-http://localhost}
+      PHP_MAX_EXECUTION_TIME: ${PHP_MAX_EXECUTION_TIME:-300}
+      PHP_MEMORY_LIMIT: ${PHP_MEMORY_LIMIT:-256M}
+      TZ: ${TZ:-UTC}
+
 volumes:
-  database_data:
-    driver: local
+  mysql_data:
   opencart_data:
-    driver: local

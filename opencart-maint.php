@@ -1,0 +1,599 @@
+#!/usr/bin/env php
+<?php
+/**
+ * OpenCart 3.0.5.1 container maintenance.
+ *
+ * Reads an existing config.php without rewriting it, and upgrades the
+ * database once. Credentials and DIR_STORAGE stay as the shop saved them.
+ */
+
+const OPENCART_VERSION = '3.0.5.1';
+const HTML_ROOT = '/var/www/html/';
+const CONFIG_FILE = HTML_ROOT . 'config.php';
+const MARKER_KEY = 'config_docker_opencart_version';
+
+function fail(string $message, int $code = 1): void
+{
+    fwrite(STDERR, $message . PHP_EOL);
+    exit($code);
+}
+
+function config_define_names(): array
+{
+    return [
+        'DB_DRIVER',
+        'DB_HOSTNAME',
+        'DB_USERNAME',
+        'DB_PASSWORD',
+        'DB_DATABASE',
+        'DB_PORT',
+        'DB_PREFIX',
+        'DIR_SYSTEM',
+        'DIR_STORAGE',
+        'DIR_IMAGE',
+    ];
+}
+
+function load_store_config(): void
+{
+    if (!is_file(CONFIG_FILE)) {
+        return;
+    }
+
+    $allowed = array_flip(config_define_names());
+    $lines = file(CONFIG_FILE, FILE_IGNORE_NEW_LINES);
+    if ($lines === false) {
+        fail('Could not read ' . CONFIG_FILE);
+    }
+
+    foreach ($lines as $line) {
+        if (!preg_match('/define\\s*\\(\\s*[\'"]([A-Z0-9_]+)[\'"]/', $line, $match)) {
+            continue;
+        }
+        if (!isset($allowed[$match[1]]) || defined($match[1])) {
+            continue;
+        }
+        eval($line);
+    }
+}
+
+function db_value(string $name, ?string $env = null, string $default = ''): string
+{
+    if (defined($name)) {
+        return (string) constant($name);
+    }
+    if ($env !== null && getenv($env) !== false) {
+        return (string) getenv($env);
+    }
+    return $default;
+}
+
+function store_configured(): bool
+{
+    load_store_config();
+    return db_value('DB_HOSTNAME') !== '' && db_value('DB_USERNAME') !== '';
+}
+
+function connection_settings(): array
+{
+    load_store_config();
+
+    $prefix = db_value('DB_PREFIX', 'DB_PREFIX', 'oc_');
+    if (!preg_match('/^[A-Za-z0-9_]+$/', $prefix)) {
+        fail('Refusing database prefix that is not alphanumeric');
+    }
+
+    return [
+        'driver' => db_value('DB_DRIVER', 'DB_DRIVER', 'mysqli'),
+        'hostname' => db_value('DB_HOSTNAME', 'DB_HOSTNAME', 'mysql'),
+        'username' => db_value('DB_USERNAME', 'DB_USERNAME', 'root'),
+        'password' => db_value('DB_PASSWORD', 'DB_PASSWORD', ''),
+        'database' => db_value('DB_DATABASE', 'DB_DATABASE', ''),
+        'port' => (int) db_value('DB_PORT', 'DB_PORT', '3306'),
+        'prefix' => $prefix,
+    ];
+}
+
+function storage_path(): string
+{
+    load_store_config();
+    $path = HTML_ROOT . 'system/storage/';
+    if (defined('DIR_STORAGE') && DIR_STORAGE !== '') {
+        $path = rtrim(DIR_STORAGE, '/') . '/';
+    }
+    // Live stacks keep storage under the /var/www volume. Refuse anything else
+    // so a bad config cannot redirect chown or the database dump.
+    if (!str_starts_with($path, '/var/www/')) {
+        return HTML_ROOT . 'system/storage/';
+    }
+    return $path;
+}
+
+function connect(array $settings, bool $selectDatabase): mysqli
+{
+    $database = $selectDatabase ? $settings['database'] : '';
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $link = @new mysqli(
+        $settings['hostname'],
+        $settings['username'],
+        $settings['password'],
+        $database,
+        $settings['port']
+    );
+    if ($link->connect_errno) {
+        throw new RuntimeException($link->connect_error ?: 'Database connection failed');
+    }
+    $link->set_charset('utf8mb4');
+    return $link;
+}
+
+function export_env(string $path): void
+{
+    if (!store_configured()) {
+        fail('config.php has no database hostname and username');
+    }
+
+    $settings = connection_settings();
+    $lines = [
+        'DB_DRIVER=' . escapeshellarg($settings['driver']),
+        'DB_HOSTNAME=' . escapeshellarg($settings['hostname']),
+        'DB_USERNAME=' . escapeshellarg($settings['username']),
+        'DB_PASSWORD=' . escapeshellarg($settings['password']),
+        'DB_DATABASE=' . escapeshellarg($settings['database']),
+        'DB_PORT=' . escapeshellarg((string) $settings['port']),
+        'DB_PREFIX=' . escapeshellarg($settings['prefix']),
+        'DIR_STORAGE=' . escapeshellarg(storage_path()),
+    ];
+    if (file_put_contents($path, implode(PHP_EOL, $lines) . PHP_EOL) === false) {
+        fail('Could not write ' . $path);
+    }
+    chmod($path, 0600);
+}
+
+function tables_exist(): bool
+{
+    $settings = connection_settings();
+    if ($settings['database'] === '' || $settings['hostname'] === '' || $settings['username'] === '') {
+        return false;
+    }
+
+    try {
+        $link = connect($settings, true);
+    } catch (Throwable $exception) {
+        return false;
+    }
+
+    $table = $settings['prefix'] . 'user';
+    $sql = "SHOW TABLES LIKE '" . $link->real_escape_string($table) . "'";
+    $result = $link->query($sql);
+    $found = $result instanceof mysqli_result && $result->num_rows > 0;
+    $link->close();
+    return $found;
+}
+
+function marker_value(mysqli $link, string $prefix): string
+{
+    $table = '`' . $prefix . 'setting`';
+    $key = $link->real_escape_string(MARKER_KEY);
+    $sql = "SELECT `value` FROM {$table} WHERE `key` = '{$key}' AND `code` = 'config' ORDER BY setting_id DESC LIMIT 1";
+    $result = $link->query($sql);
+    if (!$result instanceof mysqli_result || $result->num_rows < 1) {
+        return '';
+    }
+    $row = $result->fetch_assoc();
+    return isset($row['value']) ? (string) $row['value'] : '';
+}
+
+function write_marker(mysqli $link, string $prefix): void
+{
+    $table = '`' . $prefix . 'setting`';
+    $key = $link->real_escape_string(MARKER_KEY);
+    $version = $link->real_escape_string(OPENCART_VERSION);
+    $link->query("DELETE FROM {$table} WHERE `key` = '{$key}'");
+    $insert = "INSERT INTO {$table} SET `store_id` = '0', `code` = 'config', `key` = '{$key}', `value` = '{$version}', `serialized` = '0'";
+    if (!$link->query($insert)) {
+        fail('Could not record the upgrade version: ' . $link->error);
+    }
+}
+
+function clear_directory(string $directory): void
+{
+    if (!is_dir($directory)) {
+        mkdir($directory, 0775, true);
+        return;
+    }
+
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::CHILD_FIRST
+    );
+    foreach ($iterator as $item) {
+        if ($item->isDir()) {
+            rmdir($item->getPathname());
+        } else {
+            unlink($item->getPathname());
+        }
+    }
+}
+
+function dump_database(array $settings, string $destination): void
+{
+    $command = [
+        'mysqldump',
+        '--host=' . $settings['hostname'],
+        '--port=' . $settings['port'],
+        '--user=' . $settings['username'],
+        '--password=' . $settings['password'],
+        '--single-transaction',
+        '--quick',
+        '--no-tablespaces',
+        '--default-character-set=utf8mb4',
+        '--routines',
+        '--triggers',
+        $settings['database'],
+    ];
+
+    $pipes = [];
+    $process = proc_open($command, [
+        1 => ['file', $destination, 'w'],
+        2 => ['pipe', 'w'],
+    ], $pipes);
+
+    if (!is_resource($process)) {
+        fail('Could not start mysqldump');
+    }
+
+    $error = stream_get_contents($pipes[2]);
+    fclose($pipes[2]);
+    $status = proc_close($process);
+    if ($status !== 0 || !is_file($destination) || filesize($destination) === 0) {
+        fail('Database dump failed: ' . trim((string) $error));
+    }
+}
+
+function define_install_paths(): void
+{
+    $storage = storage_path();
+    if (!defined('DIR_SYSTEM')) {
+        define('DIR_SYSTEM', HTML_ROOT . 'system/');
+    }
+    if (!defined('DIR_STORAGE')) {
+        define('DIR_STORAGE', $storage);
+    }
+    if (!defined('DIR_OPENCART')) {
+        define('DIR_OPENCART', HTML_ROOT);
+    }
+    if (!defined('DIR_APPLICATION')) {
+        define('DIR_APPLICATION', HTML_ROOT . 'install/');
+    }
+    if (!defined('DIR_IMAGE')) {
+        define('DIR_IMAGE', HTML_ROOT . 'image/');
+    }
+    if (!defined('DIR_LANGUAGE')) {
+        define('DIR_LANGUAGE', DIR_APPLICATION . 'language/');
+    }
+    if (!defined('DIR_TEMPLATE')) {
+        define('DIR_TEMPLATE', DIR_APPLICATION . 'view/template/');
+    }
+    if (!defined('DIR_CONFIG')) {
+        define('DIR_CONFIG', DIR_SYSTEM . 'config/');
+    }
+    if (!defined('DIR_CACHE')) {
+        define('DIR_CACHE', $storage . 'cache/');
+    }
+    if (!defined('DIR_LOGS')) {
+        define('DIR_LOGS', $storage . 'logs/');
+    }
+    if (!defined('DIR_MODIFICATION')) {
+        define('DIR_MODIFICATION', $storage . 'modification/');
+    }
+    if (!defined('DIR_DOWNLOAD')) {
+        define('DIR_DOWNLOAD', $storage . 'download/');
+    }
+    if (!defined('DIR_SESSION')) {
+        define('DIR_SESSION', $storage . 'session/');
+    }
+    if (!defined('DIR_UPLOAD')) {
+        define('DIR_UPLOAD', $storage . 'upload/');
+    }
+    if (!defined('DIR_DATABASE')) {
+        define('DIR_DATABASE', DIR_SYSTEM . 'database/');
+    }
+    if (!defined('HTTP_SERVER')) {
+        define('HTTP_SERVER', 'http://localhost/install/');
+    }
+    if (!defined('HTTP_CATALOG')) {
+        define('HTTP_CATALOG', 'http://localhost/');
+    }
+    if (!defined('HTTP_OPENCART')) {
+        define('HTTP_OPENCART', 'http://localhost/');
+    }
+}
+
+function run_upgrade_models(array $settings): void
+{
+    define_install_paths();
+
+    if (!defined('DB_DRIVER')) {
+        define('DB_DRIVER', $settings['driver']);
+    }
+    if (!defined('DB_HOSTNAME')) {
+        define('DB_HOSTNAME', $settings['hostname']);
+    }
+    if (!defined('DB_USERNAME')) {
+        define('DB_USERNAME', $settings['username']);
+    }
+    if (!defined('DB_PASSWORD')) {
+        define('DB_PASSWORD', $settings['password']);
+    }
+    if (!defined('DB_DATABASE')) {
+        define('DB_DATABASE', $settings['database']);
+    }
+    if (!defined('DB_PORT')) {
+        define('DB_PORT', (string) $settings['port']);
+    }
+    if (!defined('DB_PREFIX')) {
+        define('DB_PREFIX', $settings['prefix']);
+    }
+
+    $_SERVER['HTTP_HOST'] = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    $_SERVER['SERVER_PORT'] = $_SERVER['SERVER_PORT'] ?? '80';
+    $_SERVER['DOCUMENT_ROOT'] = HTML_ROOT;
+
+    require_once DIR_SYSTEM . 'startup.php';
+
+    $registry = new Registry();
+    $loader = new Loader($registry);
+    $registry->set('load', $loader);
+    $registry->set('db', new DB(DB_DRIVER, DB_HOSTNAME, DB_USERNAME, DB_PASSWORD, DB_DATABASE, DB_PORT));
+
+    $files = glob(DIR_APPLICATION . 'model/upgrade/*.php');
+    if (!$files) {
+        fail('No OpenCart upgrade models were found');
+    }
+    sort($files, SORT_STRING);
+
+    foreach ($files as $file) {
+        $name = basename($file, '.php');
+        fwrite(STDOUT, 'Running upgrade ' . $name . PHP_EOL);
+        require_once $file;
+        $class = 'ModelUpgrade' . preg_replace('/[^a-zA-Z0-9]/', '', $name);
+        if (!class_exists($class)) {
+            fail('Upgrade class ' . $class . ' was not found');
+        }
+        $model = new $class($registry);
+        $model->upgrade();
+    }
+}
+
+function upgrade_if_needed(): void
+{
+    $settings = connection_settings();
+    if ($settings['database'] === '') {
+        fail('Database name is missing from config.php');
+    }
+
+    try {
+        $link = connect($settings, true);
+    } catch (Throwable $exception) {
+        fail('Database connection failed: ' . $exception->getMessage());
+    }
+    $lockName = 'oc3051_' . substr(md5($settings['database'] . '|' . $settings['prefix']), 0, 32);
+    $escapedLock = $link->real_escape_string($lockName);
+
+    register_shutdown_function(static function () use ($link, $escapedLock): void {
+        @$link->query("SELECT RELEASE_LOCK('{$escapedLock}')");
+    });
+
+    $lock = $link->query("SELECT GET_LOCK('{$escapedLock}', 900) AS locked");
+    $row = $lock instanceof mysqli_result ? $lock->fetch_assoc() : null;
+    if (!$row || (string) $row['locked'] !== '1') {
+        fail('Timed out waiting for the database upgrade lock');
+    }
+
+    $current = marker_value($link, $settings['prefix']);
+    if ($current === OPENCART_VERSION) {
+        fwrite(STDOUT, 'Database is already OpenCart ' . OPENCART_VERSION . PHP_EOL);
+        return;
+    }
+
+    $backupDir = storage_path() . 'backup';
+    if (!is_dir($backupDir) && !mkdir($backupDir, 0775, true) && !is_dir($backupDir)) {
+        fail('Could not create ' . $backupDir);
+    }
+    $dump = $backupDir . '/pre-upgrade-' . gmdate('Ymd-His') . '.sql';
+    fwrite(STDOUT, 'Writing database dump to ' . $dump . PHP_EOL);
+    dump_database($settings, $dump);
+    chmod($dump, 0640);
+
+    try {
+        run_upgrade_models($settings);
+    } catch (Throwable $exception) {
+        fail('Upgrade failed: ' . $exception->getMessage());
+    }
+
+    try {
+        clear_directory(storage_path() . 'cache');
+        clear_directory(storage_path() . 'modification');
+    } catch (Throwable $exception) {
+        fail('Could not clear cache: ' . $exception->getMessage());
+    }
+    write_marker($link, $settings['prefix']);
+    fwrite(STDOUT, 'Database upgraded to OpenCart ' . OPENCART_VERSION . PHP_EOL);
+}
+
+function mark_installed(): void
+{
+    $settings = connection_settings();
+    if ($settings['database'] === '') {
+        fail('Database name is missing from config.php');
+    }
+
+    try {
+        $link = connect($settings, true);
+    } catch (Throwable $exception) {
+        fail('Database connection failed: ' . $exception->getMessage());
+    }
+
+    $lockName = 'oc3051_' . substr(md5($settings['database'] . '|' . $settings['prefix']), 0, 32);
+    $escapedLock = $link->real_escape_string($lockName);
+    register_shutdown_function(static function () use ($link, $escapedLock): void {
+        @$link->query("SELECT RELEASE_LOCK('{$escapedLock}')");
+    });
+
+    $lock = $link->query("SELECT GET_LOCK('{$escapedLock}', 900) AS locked");
+    $row = $lock instanceof mysqli_result ? $lock->fetch_assoc() : null;
+    if (!$row || (string) $row['locked'] !== '1') {
+        fail('Timed out waiting for the database upgrade lock');
+    }
+
+    if (marker_value($link, $settings['prefix']) === OPENCART_VERSION) {
+        fwrite(STDOUT, 'Database is already OpenCart ' . OPENCART_VERSION . PHP_EOL);
+        return;
+    }
+
+    write_marker($link, $settings['prefix']);
+    fwrite(STDOUT, 'Recorded OpenCart ' . OPENCART_VERSION . ' without a schema upgrade' . PHP_EOL);
+}
+
+function setting_value(mysqli $link, string $prefix, string $key): ?string
+{
+    $table = '`' . $prefix . 'setting`';
+    $escapedKey = $link->real_escape_string($key);
+    $result = $link->query("SELECT `value` FROM {$table} WHERE `key` = '{$escapedKey}' AND store_id = 0 ORDER BY setting_id DESC LIMIT 1");
+    $row = $result instanceof mysqli_result ? $result->fetch_assoc() : null;
+    if (!$row || !array_key_exists('value', $row)) {
+        return null;
+    }
+    return (string) $row['value'];
+}
+
+function update_setting(mysqli $link, string $prefix, string $key, string $value): void
+{
+    $table = '`' . $prefix . 'setting`';
+    $escapedKey = $link->real_escape_string($key);
+    $escapedValue = $link->real_escape_string($value);
+    if (!$link->query("UPDATE {$table} SET `value` = '{$escapedValue}' WHERE `key` = '{$escapedKey}' AND store_id = 0")) {
+        fail('Could not set ' . $key);
+    }
+    if (setting_value($link, $prefix, $key) !== $value) {
+        fail('Could not set ' . $key);
+    }
+}
+
+function apply_store_settings(string $firstname, string $lastname, string $siteName): void
+{
+    if ($firstname === '' && $lastname === '' && $siteName === '') {
+        fwrite(STDOUT, 'No optional store settings supplied' . PHP_EOL);
+        return;
+    }
+
+    $settings = connection_settings();
+    try {
+        $link = connect($settings, true);
+    } catch (Throwable $exception) {
+        fail('Database connection failed: ' . $exception->getMessage());
+    }
+
+    $prefix = $settings['prefix'];
+    if ($firstname !== '' || $lastname !== '') {
+        $assignments = [];
+        if ($firstname !== '') {
+            $assignments[] = "firstname = '" . $link->real_escape_string($firstname) . "'";
+        }
+        if ($lastname !== '') {
+            $assignments[] = "lastname = '" . $link->real_escape_string($lastname) . "'";
+        }
+        if (!$link->query('UPDATE `' . $prefix . 'user` SET ' . implode(', ', $assignments) . ' WHERE user_id = 1')) {
+            fail('Could not set the admin name');
+        }
+        $check = $link->query('SELECT firstname, lastname FROM `' . $prefix . 'user` WHERE user_id = 1');
+        $user = $check instanceof mysqli_result ? $check->fetch_assoc() : null;
+        if (!$user
+            || ($firstname !== '' && (string) $user['firstname'] !== $firstname)
+            || ($lastname !== '' && (string) $user['lastname'] !== $lastname)
+        ) {
+            fail('Could not set the admin name');
+        }
+        update_setting($link, $prefix, 'config_owner', trim((string) $user['firstname'] . ' ' . (string) $user['lastname']));
+    }
+
+    if ($siteName !== '') {
+        update_setting($link, $prefix, 'config_name', $siteName);
+        update_setting($link, $prefix, 'config_meta_title', $siteName);
+    }
+
+    $link->close();
+    fwrite(STDOUT, 'Optional store settings applied' . PHP_EOL);
+}
+
+function marker_is_current(): bool
+{
+    $settings = connection_settings();
+    if ($settings['database'] === '') {
+        return false;
+    }
+    try {
+        $link = connect($settings, true);
+    } catch (Throwable $exception) {
+        return false;
+    }
+    $current = marker_value($link, $settings['prefix']);
+    $link->close();
+    return $current === OPENCART_VERSION;
+}
+
+function installed_version(): string
+{
+    $index = HTML_ROOT . 'index.php';
+    if (!is_file($index)) {
+        return '';
+    }
+    $contents = file_get_contents($index);
+    if ($contents !== false && preg_match("/define\\(\\s*'VERSION'\\s*,\\s*'([^']+)'\\s*\\)/", $contents, $match)) {
+        return $match[1];
+    }
+    return '';
+}
+
+$command = $argv[1] ?? '';
+
+switch ($command) {
+    case 'configured':
+        exit(store_configured() ? 0 : 1);
+    case 'export':
+        $target = $argv[2] ?? '';
+        if ($target === '') {
+            fail('export requires a destination path');
+        }
+        export_env($target);
+        exit(0);
+    case 'tables':
+        exit(tables_exist() ? 0 : 1);
+    case 'ping':
+        try {
+            connect(connection_settings(), false);
+        } catch (Throwable $exception) {
+            fail($exception->getMessage());
+        }
+        exit(0);
+    case 'storage-path':
+        fwrite(STDOUT, storage_path());
+        exit(0);
+    case 'version':
+        fwrite(STDOUT, installed_version());
+        exit(0);
+    case 'upgrade-if-needed':
+        upgrade_if_needed();
+        exit(0);
+    case 'mark':
+        mark_installed();
+        exit(0);
+    case 'apply-store':
+        apply_store_settings($argv[2] ?? '', $argv[3] ?? '', $argv[4] ?? '');
+        exit(0);
+    case 'current':
+        exit(marker_is_current() ? 0 : 1);
+    default:
+        fail('Usage: opencart-maint.php configured|export|tables|ping|storage-path|version|upgrade-if-needed|mark|apply-store|current');
+}

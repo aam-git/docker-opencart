@@ -1,24 +1,26 @@
 # OpenCart Docker Container
 
 [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
-[![OpenCart](https://img.shields.io/badge/OpenCart-v3%20%7C%20v4-blue?style=for-the-badge)](https://www.opencart.com/)
-[![PHP](https://img.shields.io/badge/PHP-8.4--apache-777BB4?style=for-the-badge&logo=php&logoColor=white)](https://php.net/)
-[![MySQL](https://img.shields.io/badge/MySQL-9.5-4479A1?style=for-the-badge&logo=mysql&logoColor=white)](https://mysql.com/)
+[![OpenCart](https://img.shields.io/badge/OpenCart-3.0.5.1-blue?style=for-the-badge)](https://www.opencart.com/)
+[![PHP](https://img.shields.io/badge/PHP-8.5--apache-777BB4?style=for-the-badge&logo=php&logoColor=white)](https://php.net/)
+[![MySQL](https://img.shields.io/badge/MySQL-8.0-4479A1?style=for-the-badge&logo=mysql&logoColor=white)](https://mysql.com/)
 
-A production-ready, fully automated Docker setup for [OpenCart](https://www.opencart.com/) e-commerce platform with zero-configuration deployment. Supports both OpenCart v3.x and v4.x with automatic version detection.
+A production-ready, fully automated Docker setup for the [OpenCart](https://www.opencart.com/) e-commerce platform. It installs a new shop on first start, and it upgrades an existing 3.0.3 or 3.0.4 shop when you change the image tag. Your compose file, configuration, and uploaded files stay in place.
+
+The image is published as `ghcr.io/aam-git/docker-opencart:3.0.5.1`. This branch is not tagged `latest`. A stack that tracks `latest` stays on that other image until you point it here on purpose.
 
 ## ✨ Features
 
 - **🚀 Fully Automated Installation** - Zero manual configuration required
-- **🔒 Security-First Design** - Enforced password validation and secure defaults  
+- **🔒 Security-First Design** - Enforced password validation and secure defaults
 - **🐳 Multi-Container Architecture** - Separate database and application containers
-- **⚙️ Comprehensive Configuration** - 15+ environment variables for complete customization
-- **🌍 Multi-Language Support** - OpenCart v4+ language selection during installation
+- **⚙️ Comprehensive Configuration** - 15+ environment variables for complete customisation
+- **🌍 Multi-Language Support** - Further languages are added from the OpenCart admin after installation
 - **🏪 Multi-Store Ready** - Configurable table prefixes for multiple stores
-- **🔄 Version Agnostic** - Supports both OpenCart v3.x and v4.x automatically
-- **🛡️ Production Ready** - Optimized for both development and production environments
-- **� Persistent Data** - Docker volumes ensure data persistence across container restarts
-- **🔧 Flexible Database Options** - Support for MySQL, MariaDB with multiple drivers
+- **🔄 Version Agnostic** - The same image installs 3.0.5.1, or upgrades a 3.0.3 or 3.0.4 shop
+- **🛡️ Production Ready** - Optimised for both development and production environments
+- **💾 Persistent Data** - Docker volumes ensure data persistence across container restarts
+- **🔧 Flexible Database Options** - Support for MySQL, Percona, and MariaDB with multiple drivers
 
 ## 🚀 Quick Start
 
@@ -26,104 +28,153 @@ Get your OpenCart store running in under 2 minutes:
 
 ```bash
 # Download configuration files
-curl -sSL https://raw.githubusercontent.com/aam-git/docker-opencart/latest/docker-compose.yml > docker-compose.yml
-curl -sSL https://raw.githubusercontent.com/aam-git/docker-opencart/latest/.env.example > .env
+curl -sSL https://raw.githubusercontent.com/aam-git/docker-opencart/3.0.5.1/docker-compose.yml > docker-compose.yml
+curl -sSL https://raw.githubusercontent.com/aam-git/docker-opencart/3.0.5.1/.env.example > .env
 
 # Configure your environment (edit passwords, email, etc.)
 nano .env
 
 # Deploy your store
-docker-compose up -d
-
-# Access your store
-open http://localhost
+docker compose up -d
 ```
+
+The store is then at [http://localhost](http://localhost). The admin is at [http://localhost/admin](http://localhost/admin).
+
+The sample compose file names the database service `mysql`, mounts the shop at `/var/www`, and uses MySQL 8.0. Set `MYSQL_IMAGE=percona:8` when you want Percona instead. MySQL is published on `127.0.0.1` only.
+
+With the admin username, password, email, and the `DB_*` variables set, the container installs the shop for you. Without those variables it leaves the web installer in place, which is how the 3.0.3.6 and 3.0.3.8 images were installed.
+
+## Upgrade an existing shop
+
+Keep the compose file you already run. Change only the OpenCart image to `ghcr.io/aam-git/docker-opencart:3.0.5.1`.
+
+Leave these as they are:
+
+- The app volume, mounted at `/var/www` (a mount at `/var/www/html` from an older sample file also works)
+- The database service. The hostname is read from `config.php`, so `mysql` and `database` both work
+- Traefik, or whichever proxy terminates TLS and routes to port 80
+- `PHP_MEMORY_LIMIT`, including a value such as `2G`
+
+MySQL 8 and Percona 8 with `mysql_native_password` both work. Keep the database server that shop already uses. Do not mount an existing 8.0 data directory onto MySQL 9.
+
+On the first start the container:
+
+1. Copies the 3.0.5.1 core files over the shop. Extension files, vQmod, `config.php`, `admin/config.php`, and `image/` stay in place.
+2. Leaves storage uploads, downloads, sessions, and logs in place.
+3. Writes a SQL dump into the storage `backup/` directory.
+4. Upgrades the database schema once.
+5. Clears `cache/` and `modification/`, then removes `install/` when the upgrade succeeds.
+
+Take your own backup of the database before that first start. The dump in storage is a second copy. After the shop is up, open Extensions, then Modifications, and refresh so your extensions are compiled again.
+
+`DB_*` and `OPENCART_*` variables left over from a 3.0.4.1 compose file are ignored once `config.php` is filled, so the installer does not run again and does not replace the public site URL.
 
 ## ⚙️ Configuration
 
 ### Environment Variables
 
-All configuration is managed through environment variables in your `.env` file. The system uses secure defaults but requires customization of security-sensitive values.
+All configuration is managed through environment variables in your `.env` file. The sample file has usable defaults. Change the passwords and the admin email before you rely on a new shop.
 
-#### 🔐 Required Security Configuration
+An existing shop does not need these variables. Its `config.php` is used as it stands.
+
+#### 🔐 Required for a new command-line install
+
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
-| `DB_PASSWORD` | Database root password | `please_change_this_password` | ✅ |
-| `OPENCART_PASSWORD` | Admin account password | `please_change_this_password` | ✅ |
-| `OPENCART_EMAIL` | Admin email address | `admin@example.com` | ✅ |
+| `DB_PASSWORD` | Database root password | `please_change_this_password` | Yes |
+| `OPENCART_PASSWORD` | Admin account password | `please_change_this_password` | Yes |
+| `OPENCART_EMAIL` | Admin email address | `admin@example.com` | Yes |
+
+`DB_HOSTNAME`, `DB_USERNAME`, `DB_DATABASE`, and `OPENCART_USERNAME` are also needed before the command-line installer runs. The sample compose file supplies defaults for those. If the admin email, password, or database settings are missing, and the volume is empty, the container starts the web installer instead of exiting.
+
+A new command-line install is refused when either password is shorter than 8 characters, or is `password`, `123456`, `admin`, `root`, or `test`. An existing shop is not refused because of the password already stored in `config.php`.
 
 #### 🐳 Container Configuration
+
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `MYSQL_VERSION` | MySQL Docker image version | `9.5` |
-| `OPENCART_IMAGE` | OpenCart Docker image | `ghcr.io/aam-git/docker-opencart:latest` |
-| `HTTP_PORT` | HTTP port mapping | `80` |
-| `HTTPS_PORT` | HTTPS port mapping | `443` |
-| `MYSQL_PORT` | MySQL port mapping | `3306` |
+| `MYSQL_IMAGE` | Database image. `percona:8` is supported. | `mysql:8.0` |
+| `OPENCART_IMAGE` | OpenCart image | `ghcr.io/aam-git/docker-opencart:3.0.5.1` |
+| `HTTP_PORT` | Host port published to container port 80 | `80` |
+| `MYSQL_PORT` | Host port published to MySQL on localhost | `3306` |
+
+TLS belongs on your reverse proxy. The container serves HTTP. Port 443 is exposed for that proxy and is not configured with a certificate.
 
 #### 🗄️ Database Configuration
+
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DB_HOSTNAME` | Database hostname | `database` |
+| `DB_HOSTNAME` | Database hostname. This is the compose service name. | `mysql` |
 | `DB_PORT` | Database port | `3306` |
 | `DB_DATABASE` | Database name | `opencart` |
 | `DB_USERNAME` | Database username | `root` |
-| `DB_DRIVER` | Database driver (mysqli/pdo/pgsql) | `mysqli` |
+| `DB_DRIVER` | Database driver (`mysqli` or `pdo`) | `mysqli` |
 | `DB_PREFIX` | Database table prefix | `oc_` |
 
+On an existing shop these values are read from `config.php`.
+
 #### 🏪 Store Configuration
+
+Used for a new command-line install. The first name, last name, and store name are optional. Leave one unset and that field stays as the installer wrote it. You can set any one of them on its own.
+
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `OPENCART_USERNAME` | Admin username | `admin` |
-| `OPENCART_FIRSTNAME` | Admin first name | `Admin` |
-| `OPENCART_LASTNAME` | Admin last name | `User` |
-| `OPENCART_SITE_NAME` | Store name | `My OpenCart Store` |
+| `OPENCART_FIRSTNAME` | Admin first name | unset, optional |
+| `OPENCART_LASTNAME` | Admin last name | unset, optional |
+| `OPENCART_SITE_NAME` | Store name and browser title | unset, optional |
 | `OPENCART_SITE_URL` | Store URL | `http://localhost` |
-| `OPENCART_LANGUAGE` | Installation language (v4+ only) | `en-gb` |
+
+`OPENCART_SITE_URL` is written into the shop URL only during a command-line install. An existing shop keeps the addresses already stored in `config.php`.
 
 #### ⚡ PHP Configuration
+
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `PHP_MAX_EXECUTION_TIME` | Script execution timeout (seconds) | `300` |
-| `PHP_MEMORY_LIMIT` | PHP memory limit | `256M` |
+| `PHP_MEMORY_LIMIT` | PHP memory limit. `2G` is a valid value. | `256M` |
+| `PHP_MAX_EXECUTION_TIME` | Script execution timeout, in seconds | `300` |
+| `PHP_UPLOAD_MAX_FILESIZE` | Maximum upload size | `64M` |
+| `PHP_POST_MAX_SIZE` | Maximum form post size. Keep this at least as large as the upload limit. | `64M` |
+| `TZ` | PHP timezone | `UTC` |
 
-> **📋 Complete Reference**: See `.env.example` for detailed explanations and additional options.
+> **📋 Complete reference**: see `.env.example` for the same settings with short comments.
 
 ## 🔄 Automated Installation Process
 
-The container performs intelligent automation on startup:
+The container does this on startup:
 
-1. **🔍 Environment Validation**
-   - Validates all required environment variables
-   - Enforces secure password requirements (minimum 8 characters)
-   - Blocks startup with insecure default passwords
+1. **🔍 Environment and PHP**
+   - Writes the PHP limits from the variables above, including `PHP_MEMORY_LIMIT`
+   - For a new command-line install, checks that the passwords are long enough and are not weak
 
-2. **🗄️ Database Preparation**
-   - Waits for MySQL container to become available
-   - Establishes database connectivity
+2. **🗄️ Database preparation**
+   - Waits until MySQL accepts the connection
+   - Uses `config.php` for an existing shop, and the environment variables for a new one
 
-3. **📦 Installation Detection**
-   - Checks for existing OpenCart installation
-   - Determines if setup is required
+3. **📦 Installation detection**
+   - An existing shop is one whose `config.php` already has a database hostname and username, or whose user table is already present
+   - An empty volume with the install variables set is a new command-line install
+   - An empty volume without those variables keeps the web installer
 
-4. **⚡ Automatic Setup** (if needed)
-   - Configures database connections
-   - Executes database schema installation
-   - Creates administrative user account
-   - Applies initial site configuration
-   - Removes installation files for security
+4. **⚡ Automatic setup**
+   - A new command-line install creates the schema, the admin user, and the config files, then applies any store name or admin name you set
+   - An existing shop has the 3.0.5.1 core files copied over it, the database dumped, and the schema upgraded once
+   - `install/` is removed after a successful install or upgrade
 
-5. **🚀 Service Startup**
-   - Launches Apache web server
-   - Makes store available for use
+5. **🚀 Service startup**
+   - Launches Apache
+   - Makes the store available for use
+
+The command-line installer is never run against an existing shop. That installer would drop the existing tables and rewrite `config.php`.
 
 ## 🛡️ Security Features
 
-- **Password Validation**: Container refuses to start with default or weak passwords
-- **Automatic Cleanup**: Installation directories removed post-setup
-- **Secure Defaults**: All configuration uses security-first principles
-- **Environment Isolation**: Secrets managed through environment variables
-- **Volume Persistence**: Data stored in Docker volumes, not containers
+- **Password validation**: a new command-line install refuses a short or weak admin or database password
+- **Automatic cleanup**: `install/` is removed after a successful install or upgrade
+- **Config files stay private**: Apache denies direct requests for `config.php`, `admin/config.php`, and `system/storage`
+- **Environment isolation**: secrets for a new shop are managed through environment variables
+- **Volume persistence**: the shop and the database live in Docker volumes, not in the container filesystem
+- **Database port**: the sample compose file publishes MySQL on `127.0.0.1` only
 
 ## 🏗️ Architecture
 
@@ -132,197 +183,220 @@ The container performs intelligent automation on startup:
 │   OpenCart      │    │     MySQL       │
 │   Container     │◄──►│   Container     │
 │                 │    │                 │
-│ • PHP 8.4       │    │ • MySQL 9.5     │
-│ • Apache 2      │    │ • Persistent    │
-│ • OpenCart 3.0  │    │   Storage       │
+│ • PHP 8.5       │    │ • MySQL 8.0     │
+│ • Apache        │    │ • or Percona 8  │
+│ • OpenCart      │    │ • Persistent    │
+│   3.0.5.1       │    │   storage       │
 └─────────────────┘    └─────────────────┘
+         │
+         └── volume mounted at /var/www
 ```
+
+The shop files live at `/var/www/html` inside that volume. If you previously moved storage, `/var/www/storage` is on the same volume and is left in place.
 
 ## 📚 Advanced Usage
 
 ### Production Deployment
 
-For production environments, ensure you:
+For a new shop behind TLS:
 
 ```bash
-# Use HTTPS and proper domain
+# Public address written during a command-line install
 OPENCART_SITE_URL=https://yourdomain.com
 
-# Use strong, unique passwords
-DB_PASSWORD=$(openssl rand -base64 32)
-OPENCART_PASSWORD=$(openssl rand -base64 24)
+# Strong, unique passwords
+DB_PASSWORD=choose-a-long-database-password
+OPENCART_PASSWORD=choose-a-long-admin-password
 
-# Configure proper admin details
+# Shop name and admin details. Each of these is optional.
+OPENCART_SITE_NAME="Your Shop"
 OPENCART_FIRSTNAME="John"
 OPENCART_LASTNAME="Smith"
 OPENCART_EMAIL="admin@yourdomain.com"
 
-# Configure proper ports (if needed)
+# Host port, if 80 is already taken
 HTTP_PORT=8080
-HTTPS_PORT=8443
+```
+
+Terminate TLS on Traefik or another reverse proxy, and route to port 80. An existing shop already has its public URL in `config.php`. Leave that file alone.
+
+For a large catalogue, or while the schema upgrade runs:
+
+```bash
+PHP_MEMORY_LIMIT=2G
+PHP_MAX_EXECUTION_TIME=300
 ```
 
 ### Multi-Store Setup
 
-For multiple OpenCart instances:
+For multiple new shops, give each one its own table prefix, name, and URL:
 
 ```bash
-# Store 1 Configuration
+# Store 1
 DB_PREFIX=store1_
 OPENCART_SITE_NAME="Main Store"
 OPENCART_SITE_URL=https://store1.yourdomain.com
 
-# Store 2 Configuration  
+# Store 2
 DB_PREFIX=store2_
 OPENCART_SITE_NAME="Secondary Store"
 OPENCART_SITE_URL=https://store2.yourdomain.com
 ```
 
-### Multi-Language Installation
+Two app containers can also share one MySQL server. Give each container its own `/var/www` volume and its own database name. The schema upgrade for a database runs once, even if a second container starts against that same database.
 
-For non-English installations (OpenCart v4+ only):
+### Languages
 
-```bash
-# French installation
-OPENCART_LANGUAGE=fr-fr
-OPENCART_SITE_NAME="Ma Boutique"
-
-# German installation
-OPENCART_LANGUAGE=de-de
-OPENCART_SITE_NAME="Mein Shop"
-
-# Spanish installation
-OPENCART_LANGUAGE=es-es
-OPENCART_SITE_NAME="Mi Tienda"
-```
+OpenCart 3.0.5.1 installs in English. Add further languages afterwards from the admin, under System, then Localisation, then Languages. There is no install-time language variable on this image.
 
 ### Development Setup
 
 For local development:
 
 ```bash
-# Use local URLs
-OPENCART_SITE_URL=http://localhost:3000
+# Local URL and a free host port
+OPENCART_SITE_URL=http://localhost:8080
+HTTP_PORT=8080
 
-# Use development-friendly settings
-OPENCART_SITE_NAME=Dev Store
+# Development-friendly settings
+OPENCART_SITE_NAME="Dev Store"
 OPENCART_USERNAME=dev-admin
 OPENCART_FIRSTNAME=Developer
 OPENCART_LASTNAME=Admin
 
-# Increase PHP limits for development
+# Higher PHP limits
 PHP_MAX_EXECUTION_TIME=600
 PHP_MEMORY_LIMIT=512M
 ```
 
 ### Database Configuration
 
-Advanced database setups:
-
 ```bash
-# Use PDO driver instead of MySQLi
+# PDO instead of MySQLi
 DB_DRIVER=pdo
 
-# Custom database configuration
+# A database that is not the bundled mysql service
 DB_HOSTNAME=external-db.example.com
 DB_PORT=3307
 DB_PREFIX=custom_
 
-# For high-traffic sites
-MYSQL_VERSION=8.0
+# Percona 8, for a data directory created by Percona
+MYSQL_IMAGE=percona:8
 ```
+
+MariaDB works with the `mysqli` driver when `DB_HOSTNAME` points at it. A new sandbox can stay on `mysql:8.0`.
 
 ### Custom Docker Images
 
-Override the default images:
-
 ```bash
-# Use custom MySQL version
-MYSQL_VERSION=8.0
+# Pin the image for this branch
+OPENCART_IMAGE=ghcr.io/aam-git/docker-opencart:3.0.5.1
 
-# Use custom OpenCart build
+# Or use your own build
 OPENCART_IMAGE=your-registry/opencart:custom
-
-# Use specific testing builds
-OPENCART_IMAGE=ghcr.io/aam-git/docker-opencart:latest
 ```
 
-## � Version Compatibility
+Do not point this branch at the `latest` tag. That tag is a different OpenCart release.
 
-This Docker container automatically detects and supports:
+## What an upgrade keeps
 
-| OpenCart Version | SQL File | Language Support | Auto-Detection |
-|------------------|----------|------------------|----------------|
-| **v4.1.0.3** | `opencart-en-gb.sql` | ✅ Multi-language | ✅ Automatic |
-| **v3.0.4.1** | `opencart.sql` | ⚠️ Post-install only | ✅ Automatic |
+- `config.php` and `admin/config.php`, including the database host, table prefix, storage path, and the public site URL
+- Uploaded images under `image/`
+- Storage uploads, downloads, sessions, and logs
+- Extra extension files and vQmod
 
-The container automatically adapts its installation parameters based on the detected OpenCart version, ensuring seamless compatibility.
+Core files that ship in OpenCart 3.0.5.1 are replaced with that release. A file that only exists because an extension added it is kept. The libraries in the storage `vendor/` directory are updated with this release, so Twig matches it. `cache/` and `modification/` are emptied after a successful upgrade.
 
-## �🔧 Troubleshooting
+## Version compatibility
+
+| Shop you have now | What this image does |
+|-------------------|----------------------|
+| New, empty volume | Installs OpenCart 3.0.5.1, from the command line or the web installer |
+| 3.0.3.6 or 3.0.3.8 | Upgrades the files and the database when you change the image tag |
+| 3.0.4.1 | Upgrades the files and the database when you change the image tag |
+
+OpenCart 4 is a different image. This branch does not install it.
+
+## 🔧 Troubleshooting
 
 ### Common Issues
 
-**Container won't start with password error**
-- Ensure `DB_PASSWORD` and `OPENCART_PASSWORD` are changed from defaults
-- Verify passwords are at least 8 characters long
-- Check that passwords don't contain reserved/weak values
+**Container won't start with a password error**
 
-**Database connection failed**
-- Wait for MySQL container to fully initialize (can take 30-60 seconds)
-- Check that `DB_PASSWORD` matches between containers
-- Verify `DB_HOSTNAME` and `DB_PORT` are correct
+- This check only applies to a new command-line install
+- `DB_PASSWORD` and `OPENCART_PASSWORD` must be at least 8 characters
+- They must not be `password`, `123456`, `admin`, `root`, or `test`
+- Change the sample placeholders before you rely on the shop
 
-**Language not found error (v4+ only)**
-- Ensure the language SQL file exists: `install/opencart-{OPENCART_LANGUAGE}.sql`
-- Check available languages in the install directory
-- Default to `en-gb` if your preferred language is unavailable
+**Database connection keeps waiting**
+
+- The first start of MySQL 8 can take a minute
+- Check that `DB_PASSWORD` matches between the app and the database service
+- Check that `DB_HOSTNAME` is the compose service name. On the sample file that name is `mysql`
+- Check `DB_PORT` if the database is not on 3306
+
+**The upgrade stopped and the shop did not come up**
+
+- Read `docker compose logs opencart`. The log names the failure
+- `config.php` is not replaced
+- A SQL dump is in the storage `backup/` directory when the dump itself succeeded
+- Fix the cause and start the container again. It retries the schema upgrade
+
+**Extensions look missing after the upgrade**
+
+- The extension files are still on disk
+- `modification/` was cleared on purpose
+- In the admin, open Extensions, then Modifications, and refresh
 
 **Table prefix conflicts**
-- Use unique `DB_PREFIX` values for multiple installations
-- Ensure prefix doesn't conflict with existing tables
-- Use alphanumeric characters and underscores only
+
+- Use a unique `DB_PREFIX` for each new shop on the same database
+- Use letters, numbers, and underscores only
 
 **Port already in use**
-- Modify `HTTP_PORT`, `HTTPS_PORT`, and `MYSQL_PORT` in your `.env` file
-- Ensure no other services are using the configured ports
+
+- Change `HTTP_PORT` or `MYSQL_PORT` in `.env`
+- The container still listens on port 80. Only the host port changes
 
 **PHP execution or memory errors**
-- Increase `PHP_MAX_EXECUTION_TIME` for complex installations
-- Raise `PHP_MEMORY_LIMIT` for sites with many extensions
-- Values are applied during installation process
+
+- Raise `PHP_MEMORY_LIMIT`, for example to `2G`, on shops with many extensions
+- Raise `PHP_MAX_EXECUTION_TIME` if a page or the schema upgrade runs out of time
+- Both are applied on every start
+
+**Web installer appears on a shop you expected to be installed**
+
+- The volume does not yet contain a filled `config.php`, and the command-line variables are not all set
+- Fill in the admin email, password, and database variables and start again, or complete the installer in the browser
 
 ### Logs and Debugging
 
 ```bash
 # View container logs
-docker-compose logs opencart
-docker-compose logs database
+docker compose logs opencart
+docker compose logs mysql
 
 # View real-time logs
-docker-compose logs -f opencart
+docker compose logs -f opencart
 
-# Access container shell
-docker-compose exec opencart bash
-docker-compose exec database mysql -uroot -p
+# Access the container shell
+docker compose exec opencart bash
+docker compose exec mysql mysql -uroot -p
 
-# Check OpenCart installation status
-docker-compose exec opencart ls -la /var/www/html/install/
-docker-compose exec opencart cat /var/www/html/config.php
+# Check whether the installer is still present, and read the shop config
+docker compose exec opencart ls -la /var/www/html/install
+docker compose exec opencart head -n 40 /var/www/html/config.php
 ```
+
+On an upgraded shop, `install/` should be absent, and `config.php` should still contain the previous database hostname and site URL.
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## 📄 License
-
-This project is open source and available under the [MIT License](LICENSE).
+Contributions are welcome. Please open a pull request.
 
 ## 🔗 Links
 
-- [OpenCart Official Website](https://www.opencart.com/)
-- [Docker Hub Repository](https://hub.docker.com/r/aamservices/opencart)
-- [GitHub Repository](https://github.com/aam-git/docker-opencart)
-
-
-[1]: http://www.opencart.com/index.php
+- [OpenCart](https://www.opencart.com/)
+- [GitHub repository](https://github.com/aam-git/docker-opencart)
+- [Image on GitHub Container Registry](https://github.com/aam-git/docker-opencart/pkgs/container/docker-opencart)
+- [Docker Hub](https://hub.docker.com/r/aamservices/opencart)

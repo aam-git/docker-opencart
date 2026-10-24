@@ -1,327 +1,290 @@
 #!/bin/bash
-# =============================================================================
-# OpenCart Docker Container Entrypoint Script
-# =============================================================================
-# 
-# This script handles automated OpenCart installation and configuration
-# 
-# Features:
-# - Environment variable validation with extensive configuration options
-# - Password security enforcement
-# - Database connection testing with configurable drivers and prefixes
-# - Automated OpenCart installation (v3.x and v4.x compatible)
-# - Multi-language support (v4.x)
-# - Multi-store support via configurable table prefixes
-# - Security hardening and proper permissions
-# - Version auto-detection and parameter adaptation
-#
-# Supported Environment Variables:
-# - Database: DB_HOSTNAME, DB_PORT, DB_DATABASE, DB_USERNAME, DB_PASSWORD, DB_DRIVER, DB_PREFIX
-# - Admin User: OPENCART_USERNAME, OPENCART_PASSWORD, OPENCART_EMAIL, OPENCART_FIRSTNAME, OPENCART_LASTNAME
-# - Site Config: OPENCART_SITE_NAME, OPENCART_SITE_URL, OPENCART_LANGUAGE
-# - PHP Config: PHP_MAX_EXECUTION_TIME, PHP_MEMORY_LIMIT
-#
-# =============================================================================
+# OpenCart 3.0.5.1 entrypoint.
+# Existing shops keep config.php, images, and storage. The database is upgraded once.
 
-# Color definitions for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+set -eo pipefail
 
-# Logging function
+HTML=/var/www/html
+SRC=/usr/src/opencart
+MAINT=/usr/local/bin/opencart-maint.php
+SOURCE_VERSION_FILE="${HTML}/.docker-source-version"
+TARGET_VERSION=3.0.5.1
+
 log() {
     local level="$1"
     local message="$2"
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    
-    case "$level" in
-        "ERROR")
-            echo -e "${RED}[$timestamp] ERROR: $message${NC}" >&2
-            ;;
-        "WARN")
-            echo -e "${YELLOW}[$timestamp] WARN: $message${NC}"
-            ;;
-        "INFO")
-            echo -e "${BLUE}[$timestamp] INFO: $message${NC}"
-            ;;
-        *)
-            echo -e "[$timestamp] $level: $message"
-            ;;
-    esac
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    printf '[%s] %s: %s\n' "$timestamp" "$level" "$message"
 }
 
-# Function to check required environment variables
-check_env_vars() {
-    local missing_vars=()
-    
-    # Required database variables
-    [ -z "$DB_HOSTNAME" ] && missing_vars+=("DB_HOSTNAME")
-    [ -z "$DB_USERNAME" ] && missing_vars+=("DB_USERNAME") 
-    [ -z "$DB_PASSWORD" ] && missing_vars+=("DB_PASSWORD")
-    [ -z "$DB_DATABASE" ] && missing_vars+=("DB_DATABASE")
-    
-    # Required OpenCart variables
-    [ -z "$OPENCART_USERNAME" ] && missing_vars+=("OPENCART_USERNAME")
-    [ -z "$OPENCART_PASSWORD" ] && missing_vars+=("OPENCART_PASSWORD") 
-    [ -z "$OPENCART_EMAIL" ] && missing_vars+=("OPENCART_EMAIL")
-    
-    # Set defaults for optional variables
-    DB_DRIVER="${DB_DRIVER:-mysqli}"
-    DB_PREFIX="${DB_PREFIX:-oc_}"
-    OPENCART_LANGUAGE="${OPENCART_LANGUAGE:-en-gb}"
-    OPENCART_FIRSTNAME="${OPENCART_FIRSTNAME:-Admin}"
-    OPENCART_LASTNAME="${OPENCART_LASTNAME:-User}"
-    
-    log "INFO" "Using database driver: $DB_DRIVER"
-    log "INFO" "Using database prefix: $DB_PREFIX"
-    log "INFO" "Using OpenCart language: $OPENCART_LANGUAGE"
-    
-    if [ ${#missing_vars[@]} -ne 0 ]; then
-        log "ERROR" "Missing required environment variables: ${missing_vars[*]}"
-        log "ERROR" "Please set all required variables before starting the container"
-        exit 1
-    fi
-    
-    log "INFO" "All required environment variables are set"
-}
+apply_php_ini() {
+    local memory="${PHP_MEMORY_LIMIT:-256M}"
+    local execution="${PHP_MAX_EXECUTION_TIME:-300}"
+    local upload="${PHP_UPLOAD_MAX_FILESIZE:-64M}"
+    local post="${PHP_POST_MAX_SIZE:-64M}"
+    local timezone="${TZ:-UTC}"
+    local value
 
-# Function to validate password security
-validate_passwords() {
-    log "INFO" "Validating password security requirements..."
-    
-    # Check database password strength
-    if [ ${#DB_PASSWORD} -lt 8 ]; then
-        log "ERROR" "DB_PASSWORD must be at least 8 characters long"
-        exit 1
-    fi
-    
-    # Check OpenCart admin password strength
-    if [ ${#OPENCART_PASSWORD} -lt 8 ]; then
-        log "ERROR" "OPENCART_PASSWORD must be at least 8 characters long"
-        exit 1
-    fi
-    
-    # Check for common weak passwords
-    local weak_passwords=("password" "123456" "admin" "root" "test")
-    for weak in "${weak_passwords[@]}"; do
-        if [ "$DB_PASSWORD" = "$weak" ] || [ "$OPENCART_PASSWORD" = "$weak" ]; then
-            log "ERROR" "Weak password detected. Please use a stronger password."
+    for value in "$memory" "$execution" "$upload" "$post" "$timezone"; do
+        if [[ ! "$value" =~ ^[A-Za-z0-9:._/+-]+$ ]]; then
+            log "ERROR" "Refusing PHP setting that contains unsupported characters: ${value}"
             exit 1
         fi
     done
-    
-    log "INFO" "Password security validation passed"
+
+    cat > /usr/local/etc/php/conf.d/opencart.ini <<EOF
+memory_limit = ${memory}
+max_execution_time = ${execution}
+upload_max_filesize = ${upload}
+post_max_size = ${post}
+date.timezone = ${timezone}
+log_errors = On
+error_log = /dev/stderr
+opcache.enable = 1
+opcache.enable_cli = 0
+opcache.validate_timestamps = 1
+opcache.revalidate_freq = 0
+EOF
+    log "INFO" "PHP memory_limit=${memory} max_execution_time=${execution}"
 }
 
-# Function to ensure proper permissions on storage directories
-ensure_storage_permissions() {
-    log "INFO" "Ensuring proper permissions on OpenCart storage directories..."
-    
-    # Storage directories that should have proper permissions
-    local storage_paths=(
-        "/var/www/storage"
-        "/var/www/html/system/storage"
-    )
-    
-    # Ensure /var/www and all subdirectories are owned by www-data (important for volume mounts)
-    chown -R www-data:www-data /var/www
-    
-    # Set proper permissions on storage directories if they exist
-    for storage_path in "${storage_paths[@]}"; do
-        if [ -d "$storage_path" ]; then
-            log "INFO" "Setting permissions on: $storage_path"
-            chmod -R 775 "$storage_path"
+cli_env_ready() {
+    [ -n "${DB_HOSTNAME:-}" ] \
+        && [ -n "${DB_USERNAME:-}" ] \
+        && [ -n "${DB_PASSWORD:-}" ] \
+        && [ -n "${DB_DATABASE:-}" ] \
+        && [ -n "${OPENCART_USERNAME:-}" ] \
+        && [ -n "${OPENCART_PASSWORD:-}" ] \
+        && [ -n "${OPENCART_EMAIL:-}" ]
+}
+
+validate_passwords() {
+    local weak
+    if [ "${#DB_PASSWORD}" -lt 8 ] || [ "${#OPENCART_PASSWORD}" -lt 8 ]; then
+        log "ERROR" "DB_PASSWORD and OPENCART_PASSWORD must be at least 8 characters"
+        exit 1
+    fi
+    for weak in password 123456 admin root test; do
+        if [ "$DB_PASSWORD" = "$weak" ] || [ "$OPENCART_PASSWORD" = "$weak" ]; then
+            log "ERROR" "Weak password detected. Choose a stronger password."
+            exit 1
         fi
     done
-    
-    log "INFO" "Storage permissions configured successfully"
 }
 
-# Function to wait for database to be ready
 wait_for_db() {
-    log "INFO" "Waiting for database to be ready..."
-    
-    while ! php -r "
-        try {
-            new PDO('mysql:host=$DB_HOSTNAME;port=${DB_PORT:-3306}', '$DB_USERNAME', '$DB_PASSWORD');
-            echo 'connected';
-        } catch (Exception \$e) {
-            exit(1);
-        }
-    " > /dev/null 2>&1; do
-        log "INFO" "Database not ready yet, waiting..."
+    local env_file="${1:-}"
+    local attempt=0
+    if [ -n "$env_file" ]; then
+        # shellcheck disable=SC1090
+        set -a
+        source "$env_file"
+        set +a
+    fi
+    log "INFO" "Waiting for database at ${DB_HOSTNAME:-mysql}:${DB_PORT:-3306}"
+    while ! php "$MAINT" ping >/dev/null 2>&1; do
+        attempt=$((attempt + 1))
+        if [ $((attempt % 10)) -eq 0 ]; then
+            log "INFO" "Database is not ready yet"
+        fi
         sleep 2
     done
-    
     log "INFO" "Database is ready"
 }
 
-# Function to run automated OpenCart installation
-run_automated_installation() {
-    log "INFO" "Starting automated OpenCart installation using OpenCart's CLI installer..."
-
-    # Ensure config files exist (rename from dist versions)
-    if [ ! -f "/var/www/html/config.php" ] && [ -f "/var/www/html/config-dist.php" ]; then
-        log "INFO" "Creating config.php from config-dist.php"
-        cp /var/www/html/config-dist.php /var/www/html/config.php
+remember_source_version() {
+    local current=""
+    if [ -f "$SOURCE_VERSION_FILE" ]; then
+        return 0
     fi
-    
-    if [ ! -f "/var/www/html/admin/config.php" ] && [ -f "/var/www/html/admin/config-dist.php" ]; then
-        log "INFO" "Creating admin/config.php from admin/config-dist.php"
-        cp /var/www/html/admin/config-dist.php /var/www/html/admin/config.php
+    if [ -f "${HTML}/index.php" ]; then
+        current=$(php "$MAINT" version || true)
     fi
+    if [ -n "$current" ] && [ "$current" != "$TARGET_VERSION" ]; then
+        printf '%s\n' "$current" > "$SOURCE_VERSION_FILE"
+        log "INFO" "Existing OpenCart ${current} will be upgraded to ${TARGET_VERSION}"
+    fi
+}
 
-    # Make config files writable for installation
-    chmod 666 /var/www/html/config.php /var/www/html/admin/config.php
+source_version() {
+    if [ -f "$SOURCE_VERSION_FILE" ]; then
+        tr -d '[:space:]' < "$SOURCE_VERSION_FILE"
+    fi
+}
 
-    # Use OpenCart's official CLI installer
-    log "INFO" "Running OpenCart CLI installation..."
-    if [ -f "/var/www/html/install/cli_install.php" ]; then
-        cd /var/www/html
-        
-        # Detect OpenCart version by checking SQL file structure
-        if [ -f "/var/www/html/install/opencart-${OPENCART_LANGUAGE}.sql" ] || [ -f "/var/www/html/install/opencart-en-gb.sql" ]; then
-            # OpenCart v4+ with language-specific SQL files
-            log "INFO" "Detected OpenCart v4+ - using language parameter: $OPENCART_LANGUAGE"
-            php install/cli_install.php install \
-                --username "$OPENCART_USERNAME" \
-                --email "$OPENCART_EMAIL" \
-                --password "$OPENCART_PASSWORD" \
-                --http_server "$OPENCART_SITE_URL/" \
-                --language "$OPENCART_LANGUAGE" \
-                --db_driver "$DB_DRIVER" \
-                --db_hostname "$DB_HOSTNAME" \
-                --db_username "$DB_USERNAME" \
-                --db_password "$DB_PASSWORD" \
-                --db_database "$DB_DATABASE" \
-                --db_port "$DB_PORT" \
-                --db_prefix "$DB_PREFIX"
-        elif [ -f "/var/www/html/install/opencart.sql" ]; then
-            # OpenCart v3.x with single SQL file
-            log "INFO" "Detected OpenCart v3.x - using legacy parameters"
-            php install/cli_install.php install \
-                --username "$OPENCART_USERNAME" \
-                --email "$OPENCART_EMAIL" \
-                --password "$OPENCART_PASSWORD" \
-                --http_server "$OPENCART_SITE_URL/" \
-                --db_driver "$DB_DRIVER" \
-                --db_hostname "$DB_HOSTNAME" \
-                --db_username "$DB_USERNAME" \
-                --db_password "$DB_PASSWORD" \
-                --db_database "$DB_DATABASE" \
-                --db_port "$DB_PORT" \
-                --db_prefix "$DB_PREFIX"
+sync_tree() {
+    local mode="$1"
+    local -a excludes=(
+        --exclude '/config.php'
+        --exclude '/admin/config.php'
+        --exclude '/.docker-source-version'
+        --exclude '/.docker-pending-store-settings'
+    )
+    if [ "$mode" = "existing" ]; then
+        excludes+=(--exclude '/image/' --exclude '/system/storage/')
+    fi
+    log "INFO" "Syncing OpenCart files (${mode})"
+    rsync -a "${excludes[@]}" "${SRC}/" "${HTML}/"
+    if [ ! -f "${HTML}/.htaccess" ] && [ -f "${HTML}/.htaccess.txt" ]; then
+        cp "${HTML}/.htaccess.txt" "${HTML}/.htaccess"
+    fi
+    ensure_config_files
+}
+
+ensure_config_files() {
+    if [ ! -f "${HTML}/config.php" ]; then
+        if [ -s "${HTML}/config-dist.php" ]; then
+            cp "${HTML}/config-dist.php" "${HTML}/config.php"
         else
-            log "ERROR" "Could not find OpenCart SQL installation files"
-            return 1
+            : > "${HTML}/config.php"
         fi
-        
-        if [ $? -eq 0 ]; then
-            log "INFO" "OpenCart CLI installation completed successfully!"
+    fi
+    if [ ! -f "${HTML}/admin/config.php" ]; then
+        if [ -s "${HTML}/admin/config-dist.php" ]; then
+            cp "${HTML}/admin/config-dist.php" "${HTML}/admin/config.php"
         else
-            log "ERROR" "OpenCart CLI installation failed!"
-            return 1
+            : > "${HTML}/admin/config.php"
         fi
+    fi
+}
+
+sync_vendor() {
+    local storage vendor_src
+    vendor_src="${SRC}/system/storage/vendor/"
+    if [ ! -d "$vendor_src" ]; then
+        return 0
+    fi
+    storage=$(php "$MAINT" storage-path)
+    mkdir -p "${storage}/vendor" "${storage}/cache" "${storage}/download" \
+        "${storage}/logs" "${storage}/modification" "${storage}/session" \
+        "${storage}/upload" "${storage}/backup"
+    rsync -a --delete "$vendor_src" "${storage}/vendor/"
+}
+
+fix_ownership() {
+    local storage
+    storage=$(php "$MAINT" storage-path)
+    log "INFO" "Setting ownership for the shop and storage"
+    chown -R www-data:www-data "$HTML" "$storage"
+    chmod 775 "$storage" "${HTML}/image" 2>/dev/null || true
+}
+
+store_configured() {
+    [ -f "${HTML}/config.php" ] && php "$MAINT" configured
+}
+
+apply_store_identity() {
+    local first_name last_name site_name
+    first_name="${OPENCART_FIRSTNAME:-}"
+    last_name="${OPENCART_LASTNAME:-}"
+    site_name="${OPENCART_SITE_NAME:-}"
+    if [ -z "$first_name" ] && [ -z "$last_name" ] && [ -z "$site_name" ]; then
+        rm -f "${HTML}/.docker-pending-store-settings"
+        return 0
+    fi
+    log "INFO" "Applying optional store name and admin name"
+    php "$MAINT" apply-store "$first_name" "$last_name" "$site_name"
+    rm -f "${HTML}/.docker-pending-store-settings"
+}
+
+run_cli_install() {
+    local site_url
+    site_url="${OPENCART_SITE_URL:-http://localhost}"
+    site_url="${site_url%/}/"
+    DB_PORT="${DB_PORT:-3306}"
+    DB_DRIVER="${DB_DRIVER:-mysqli}"
+    DB_PREFIX="${DB_PREFIX:-oc_}"
+    # Set only when a new install supplied an optional name. A retry can finish
+    # that step. Unset names keep the installer values.
+    if [ -n "${OPENCART_FIRSTNAME:-}" ] || [ -n "${OPENCART_LASTNAME:-}" ] || [ -n "${OPENCART_SITE_NAME:-}" ]; then
+        touch "${HTML}/.docker-pending-store-settings"
+    fi
+    log "INFO" "Running OpenCart CLI installation"
+    (
+        cd "$HTML"
+        php install/cli_install.php install \
+            --username "$OPENCART_USERNAME" \
+            --email "$OPENCART_EMAIL" \
+            --password "$OPENCART_PASSWORD" \
+            --http_server "$site_url" \
+            --db_driver "$DB_DRIVER" \
+            --db_hostname "$DB_HOSTNAME" \
+            --db_username "$DB_USERNAME" \
+            --db_password "$DB_PASSWORD" \
+            --db_database "$DB_DATABASE" \
+            --db_port "$DB_PORT" \
+            --db_prefix "$DB_PREFIX"
+    )
+    chmod 644 "${HTML}/config.php" "${HTML}/admin/config.php"
+    apply_store_identity
+    php "$MAINT" mark
+    rm -rf "${HTML}/install"
+    rm -f "$SOURCE_VERSION_FILE"
+    log "INFO" "OpenCart CLI installation completed"
+}
+
+finish_existing_store() {
+    local previous env_file
+    previous=$(source_version || true)
+    env_file=$(mktemp)
+    chmod 600 "$env_file"
+    if store_configured; then
+        php "$MAINT" export "$env_file"
+        # shellcheck disable=SC1090
+        set -a
+        source "$env_file"
+        set +a
+    fi
+    wait_for_db
+    if [ -n "$previous" ] && [ "$previous" != "$TARGET_VERSION" ]; then
+        if ! php "$MAINT" upgrade-if-needed || ! php "$MAINT" current; then
+            rm -f "$env_file"
+            log "ERROR" "Upgrade failed. install/ has been left in place and config.php was not changed."
+            exit 1
+        fi
+    elif ! php "$MAINT" mark; then
+        rm -f "$env_file"
+        log "ERROR" "Could not record the OpenCart version."
+        exit 1
+    fi
+    rm -f "$env_file"
+    if [ -f "${HTML}/.docker-pending-store-settings" ]; then
+        apply_store_identity
+    fi
+    rm -rf "${HTML}/install"
+    rm -f "$SOURCE_VERSION_FILE"
+    chmod 644 "${HTML}/config.php" "${HTML}/admin/config.php" 2>/dev/null || true
+    log "INFO" "Existing store is ready"
+}
+
+log "INFO" "Starting OpenCart ${TARGET_VERSION}"
+apply_php_ini
+remember_source_version
+
+if store_configured || { cli_env_ready && php "$MAINT" tables; }; then
+    sync_tree existing
+    sync_vendor
+    finish_existing_store
+elif cli_env_ready; then
+    validate_passwords
+    sync_tree fresh
+    sync_vendor
+    chmod 666 "${HTML}/config.php" "${HTML}/admin/config.php"
+    wait_for_db
+    if php "$MAINT" tables; then
+        log "INFO" "Database tables already exist. Skipping the CLI installer."
+        finish_existing_store
     else
-        log "ERROR" "OpenCart CLI installer not found at /var/www/html/install/cli_install.php"
-        return 1
+        run_cli_install
     fi
-
-    log "INFO" "OpenCart installation finalization completed!"
-}
-
-# Function to check if OpenCart is already installed
-is_opencart_installed() {
-    log "INFO" "Checking if OpenCart is already installed..."
-    
-    # Check if config.php has been modified from default and install directory is gone
-    if [ -f "/var/www/html/config.php" ] && [ ! -d "/var/www/html/install" ]; then
-        # Check if config.php contains actual database configuration (not default values)
-        if grep -q "define('DB_HOSTNAME'" /var/www/html/config.php && \
-           grep -q "define('DB_USERNAME'" /var/www/html/config.php && \
-           ! grep -q "DB_HOSTNAME', ''" /var/www/html/config.php && \
-           ! grep -q "DB_USERNAME', ''" /var/www/html/config.php; then
-            log "INFO" "OpenCart appears to be already installed (config exists and install dir removed)"
-            return 0  # Installed
-        fi
-    fi
-    
-    # Also check if we can connect to database and find OpenCart tables
-    local prefix="${DB_PREFIX:-oc_}"
-    if php -r "
-        try {
-            \$pdo = new PDO('mysql:host=$DB_HOSTNAME;port=${DB_PORT:-3306};dbname=$DB_DATABASE', '$DB_USERNAME', '$DB_PASSWORD');
-            \$stmt = \$pdo->query('SHOW TABLES LIKE \"${prefix}user\"');
-            if (\$stmt && \$stmt->rowCount() > 0) {
-                exit(0); // Tables exist
-            }
-            exit(1); // No tables
-        } catch (Exception \$e) {
-            exit(1); // Connection failed
-        }
-    " 2>/dev/null; then
-        log "INFO" "OpenCart database tables found - installation appears complete"
-        return 0  # Installed
-    fi
-    
-    log "INFO" "OpenCart is not installed yet"
-    return 1  # Not installed
-}
-
-# Function to install OpenCart automatically
-install_opencart() {
-    log "INFO" "Installing OpenCart automatically..."
-    
-    # Run the automated installation using OpenCart's CLI installer
-    if run_automated_installation; then
-        log "INFO" "OpenCart installation completed successfully!"
-        
-        # Remove install directory for security (CLI installer handles config file creation)
-        if [ -d "/var/www/html/install" ]; then
-            log "INFO" "Removing install directory for security..."
-            rm -rf /var/www/html/install
-        fi
-        
-        # Ensure config files have proper ownership and are read-only after installation
-        chown www-data:www-data /var/www/html/config.php /var/www/html/admin/config.php 2>/dev/null || true
-        chmod 644 /var/www/html/config.php /var/www/html/admin/config.php 2>/dev/null || true
-        
-        log "INFO" "OpenCart installation and security hardening completed!"
-    else
-        log "ERROR" "OpenCart installation failed!"
-        return 1
-    fi
-}
-
-# =============================================================================
-# MAIN EXECUTION
-# =============================================================================
-
-log "INFO" "Starting OpenCart container initialization..."
-
-# Ensure proper permissions on storage directories
-ensure_storage_permissions
-
-# Check environment variables
-check_env_vars
-
-# Validate password security
-validate_passwords
-
-# Wait for database
-wait_for_db
-
-# Check if OpenCart is installed
-if is_opencart_installed; then
-    log "INFO" "OpenCart is already installed, starting normally..."
 else
-    log "INFO" "OpenCart not installed, running automatic installation..."
-    install_opencart
+    log "INFO" "No install environment variables are set. Leaving the web installer available."
+    sync_tree fresh
+    sync_vendor
+    chmod 666 "${HTML}/config.php" "${HTML}/admin/config.php"
 fi
 
-log "INFO" "Initialization complete! Starting Apache..."
-
-# Execute the original command (start Apache)
+fix_ownership
+log "INFO" "Starting Apache"
 exec "$@"

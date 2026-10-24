@@ -1,122 +1,107 @@
 # =============================================================================
-# OpenCart 3.0.4.1 Docker Container
+# OpenCart 3.0.5.1 Docker Container
 # =============================================================================
-# 
-# Production-ready OpenCart e-commerce platform with automated installation
-# 
-# Features:
-# - PHP 8.3 with Apache 2.4
-# - Automated OpenCart installation and configuration
-# - Security-first design with password validation
-# - Multi-stage optimization for smaller image size
-# 
+#
+# PHP 8.5 with Apache. Existing 3.0.3.x stores mounted at /var/www are
+# upgraded in place. New stores can be installed from the CLI or the web installer.
+#
 # Author: Aaron M <info@aamservices.uk>
 # Repository: https://github.com/aam-git/docker-opencart
 # =============================================================================
 
-FROM php:8.4-apache
+FROM php:8.5-apache
 
-# Metadata labels following OCI specification
 LABEL org.opencontainers.image.title="OpenCart Docker Container"
-LABEL org.opencontainers.image.description="Production-ready OpenCart 3.0.4.1 with automated installation"
-LABEL org.opencontainers.image.version="3.0.4.1"
+LABEL org.opencontainers.image.description="OpenCart 3.0.5.1 on PHP 8.5, compatible with existing 3.0.3.x volumes"
+LABEL org.opencontainers.image.version="3.0.5.1"
 LABEL org.opencontainers.image.authors="Aaron Moy <info@aamservices.uk>"
 LABEL org.opencontainers.image.url="https://github.com/aam-git/docker-opencart"
 LABEL org.opencontainers.image.source="https://github.com/aam-git/docker-opencart"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL maintainer="aaron <info@aamservices.uk>"
 
-# =============================================================================
-# System Configuration
-# =============================================================================
-
-# Enable required Apache modules for OpenCart
-RUN a2enmod rewrite headers
-
-# Install system dependencies
-# Note: Combining RUN commands reduces Docker layers and image size
-RUN apt-get update && \
+# mbstring on PHP 8.5 needs Oniguruma headers. The official image does not ship them.
+# Extensions are installed one at a time. A parallel install on PHP 8.5 deletes modules/ mid-copy.
+RUN set -eux; \
+    apt-get update; \
     apt-get install -y --no-install-recommends \
-        git \
-        zip \
-        libzip-dev \
-        default-mysql-client \
+        ca-certificates \
         curl \
-        unzip && \
+        default-mysql-client \
+        libjpeg-dev \
+        libonig-dev \
+        libpng-dev \
+        libwebp-dev \
+        libzip-dev \
+        rsync \
+        unzip; \
+    docker-php-ext-configure gd --with-jpeg --with-webp; \
+    docker-php-ext-install gd; \
+    docker-php-ext-install mbstring; \
+    docker-php-ext-install mysqli; \
+    docker-php-ext-install pdo_mysql; \
+    docker-php-ext-install zip; \
+    a2enmod rewrite headers; \
     rm -rf /var/lib/apt/lists/*
 
-# Install PHP extensions required by OpenCart
-RUN set -xe && \
-    # Install image processing libraries
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
-        libpng-dev \
-        libjpeg-dev \
-        libwebp-dev && \
-    rm -rf /var/lib/apt/lists/* && \
-    # Configure and install PHP extensions
-    docker-php-ext-configure gd --with-jpeg=/usr --with-webp=/usr && \
-    docker-php-ext-install -j$(nproc) \
-        gd \
-        mysqli \
-        pdo_mysql \
-        zip
-
-# =============================================================================
-# OpenCart Installation
-# =============================================================================
-
-# Set working directory
 WORKDIR /var/www/html
 
-# OpenCart version and download configuration
-ENV OPENCART_VER=3.0.4.1 \
-    OPENCART_MD5=f1cd69918494928fd2f13c948be0ba55 \
+ENV OPENCART_VER=3.0.5.1 \
+    OPENCART_MD5=d7b8c2a9c7e2e020bfac233b0fb59fb6 \
     OPENCART_FILE=opencart.zip
 
-ENV OPENCART_URL=https://github.com/opencart/opencart/releases/download/${OPENCART_VER}/${OPENCART_VER}.zip
+ENV OPENCART_URL=https://github.com/opencart/opencart/releases/download/${OPENCART_VER}/opencart-${OPENCART_VER}.zip
 
-# Download, verify, and install OpenCart
-RUN set -xe && \
-    # Download OpenCart with retry logic
-    curl -sSL --retry 3 --retry-delay 5 "${OPENCART_URL}" -o "${OPENCART_FILE}" && \
-    # Verify file integrity
-    echo "${OPENCART_MD5}  ${OPENCART_FILE}" | md5sum -c && \
-    # Extract OpenCart files
-    unzip -q "${OPENCART_FILE}" 'upload/*' -d /var/www/html/ && \
-    mv /var/www/html/upload/* /var/www/html/ && \
-    rm -rf /var/www/html/upload/ && \
-    # Prepare configuration files
-    mv config-dist.php config.php && \
-    mv admin/config-dist.php admin/config.php && \
-    # Cleanup
-    rm "${OPENCART_FILE}" && \
-    # Set proper OpenCart permissions (production-ready security model)
-    # Change ownership from /var/www upwards to handle volume mounts properly
-    chown -R www-data:www-data /var/www && \
-    # Set directory permissions (755 - readable/executable by all, writable by owner)
-    find /var/www -type d -exec chmod 755 {} + && \
-    # Set file permissions (644 - readable by all, writable by owner only)
-    find /var/www -type f -exec chmod 644 {} + && \
-    # Set special permissions for OpenCart writable directories
-    chmod 775 /var/www/html/image && \
-    chmod 775 /var/www/html/system/storage
+# Keep a pristine tree outside /var/www. A volume mounted at /var/www hides
+# the files baked into the image, so upgrades are copied from /usr/src/opencart.
+RUN set -eux; \
+    curl -fsSL --retry 3 --retry-delay 5 -o "/tmp/${OPENCART_FILE}" "${OPENCART_URL}"; \
+    echo "${OPENCART_MD5}  /tmp/${OPENCART_FILE}" | md5sum -c; \
+    mkdir -p /tmp/opencart-unpack /usr/src/opencart; \
+    unzip -q "/tmp/${OPENCART_FILE}" 'upload/*' -d /tmp/opencart-unpack; \
+    mv /tmp/opencart-unpack/upload/* /usr/src/opencart/; \
+    rm -rf /tmp/opencart-unpack "/tmp/${OPENCART_FILE}"; \
+    # 3.0.5.0+ tables are utf8mb4, but the drivers still connect as utf8.
+    # https://github.com/opencart/opencart/issues/15695
+    sed -i "s/set_charset('utf8')/set_charset('utf8mb4')/" /usr/src/opencart/system/library/db/mysqli.php; \
+    sed -i \
+        -e "s/SET NAMES 'utf8'/SET NAMES 'utf8mb4'/" \
+        -e "s/SET CHARACTER SET utf8/SET CHARACTER SET utf8mb4/" \
+        -e "s/CHARACTER_SET_CONNECTION=utf8/CHARACTER_SET_CONNECTION=utf8mb4/" \
+        /usr/src/opencart/system/library/db/pdo.php; \
+    # PHP 8 no longer passes errcontext into error handlers.
+    sed -i 's/array \$errcontext)/array \$errcontext = [])/' /usr/src/opencart/install/cli_install.php; \
+    cp -a /usr/src/opencart/. /var/www/html/; \
+    if [ -s /var/www/html/config-dist.php ]; then \
+        cp /var/www/html/config-dist.php /var/www/html/config.php; \
+    else \
+        : > /var/www/html/config.php; \
+    fi; \
+    if [ -s /var/www/html/admin/config-dist.php ]; then \
+        cp /var/www/html/admin/config-dist.php /var/www/html/admin/config.php; \
+    else \
+        : > /var/www/html/admin/config.php; \
+    fi; \
+    if [ ! -f /var/www/html/.htaccess ] && [ -f /var/www/html/.htaccess.txt ]; then \
+        cp /var/www/html/.htaccess.txt /var/www/html/.htaccess; \
+    fi; \
+    chown -R www-data:www-data /var/www/html; \
+    find /var/www/html -type d -exec chmod 755 {} +; \
+    find /var/www/html -type f -exec chmod 644 {} +; \
+    chmod 775 /var/www/html/image /var/www/html/system/storage; \
+    chmod 666 /var/www/html/config.php /var/www/html/admin/config.php; \
+    chmod -R a+rX /usr/src/opencart
 
-# =============================================================================
-# Container Configuration
-# =============================================================================
-
-# Copy and configure entrypoint script
+COPY opencart-apache.conf /etc/apache2/conf-available/opencart.conf
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+COPY opencart-maint.php /usr/local/bin/opencart-maint.php
 
-# Health check to ensure container is ready
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+RUN a2enconf opencart && chmod 755 /usr/local/bin/entrypoint.sh /usr/local/bin/opencart-maint.php
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=300s --retries=3 \
     CMD curl -f http://localhost/ || exit 1
 
-# Expose standard HTTP and HTTPS ports
 EXPOSE 80 443
 
-# Set entrypoint and default command
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["apache2-foreground"]

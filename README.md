@@ -62,7 +62,7 @@ On the first start the container:
 1. Copies the 3.0.5.1 core files over the shop. Extension files, vQmod, `config.php`, `admin/config.php`, and `image/` stay in place.
 2. Leaves storage uploads, downloads, sessions, and logs in place.
 3. Tries to write a SQL dump into the storage `backup/` directory. If that dump cannot be written, the log shows a warning and the upgrade continues.
-4. Upgrades the database schema once.
+4. Upgrades the database schema once. If an upgrade model rewrites `config.php` or `admin/config.php`, those files are put back as they were.
 5. Clears `cache/` and `modification/`, then removes `install/` when the upgrade succeeds.
 
 Take your own backup of the database before that first start. The dump in storage is only attempted as a second copy, and a shop whose database client cannot complete it still upgrades. After the shop is up, open Extensions, then Modifications, and refresh so your extensions are compiled again.
@@ -337,8 +337,8 @@ OpenCart 4 is a different image. This branch does not install it.
 
 **The upgrade stopped and the shop did not come up**
 
-- Read `docker compose logs opencart`. The log names the failure
-- `config.php` is not replaced
+- Read `docker compose logs opencart`. The log names the upgrade model, the file, the line, and the stack trace
+- `config.php` and `admin/config.php` are restored if a model rewrote them. If either file is missing `DB_HOSTNAME` or `DB_USERNAME`, the container stops and does not open the web installer
 - A SQL dump is in the storage `backup/` directory when the dump itself succeeded. A warning about the dump does not stop the upgrade
 - Fix the cause and start the container again. It retries the schema upgrade
 

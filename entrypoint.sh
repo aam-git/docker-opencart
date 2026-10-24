@@ -262,6 +262,13 @@ log "INFO" "Starting OpenCart ${TARGET_VERSION}"
 apply_php_ini
 remember_source_version
 
+if [ -f "$SOURCE_VERSION_FILE" ] && ! store_configured; then
+    problem=$(php "$MAINT" config-problem || true)
+    log "ERROR" "${problem:-${HTML}/config.php cannot be read.}"
+    log "ERROR" "This shop is already being upgraded. The web installer will not be started."
+    exit 1
+fi
+
 if store_configured || { cli_env_ready && php "$MAINT" tables; }; then
     sync_tree existing
     sync_vendor

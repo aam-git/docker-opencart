@@ -71,6 +71,8 @@ RUN set -eux; \
         /usr/src/opencart/system/library/db/pdo.php; \
     # PHP 8 no longer passes errcontext into error handlers.
     sed -i 's/array \$errcontext)/array \$errcontext = [])/' /usr/src/opencart/install/cli_install.php; \
+    # 1006 turns off every extension modification. A 3.0.3 shop should keep them enabled.
+    sed -i '/modification` SET status = 0/d' /usr/src/opencart/install/model/upgrade/1006.php; \
     cp -a /usr/src/opencart/. /var/www/html/; \
     if [ -s /var/www/html/config-dist.php ]; then \
         cp /var/www/html/config-dist.php /var/www/html/config.php; \

@@ -329,6 +329,74 @@ function define_install_paths(): void
     }
 }
 
+function shop_config_paths(): array
+{
+    return [
+        HTML_ROOT . 'config.php',
+        HTML_ROOT . 'admin/config.php',
+    ];
+}
+
+function snapshot_configs(): array
+{
+    $copies = [];
+    foreach (shop_config_paths() as $path) {
+        if (!is_file($path)) {
+            continue;
+        }
+        $copy = tempnam('/tmp', 'opencart-config-');
+        if ($copy === false || !copy($path, $copy)) {
+            fail('Could not snapshot ' . $path);
+        }
+        $copies[$path] = $copy;
+    }
+    return $copies;
+}
+
+function restore_configs(array $copies): void
+{
+    foreach ($copies as $path => $copy) {
+        if (!is_file($copy)) {
+            continue;
+        }
+        if (!copy($copy, $path)) {
+            warn('Could not restore ' . $path . '. An upgrade model may have changed it.');
+        }
+        unlink($copy);
+    }
+}
+
+function report_upgrade_failure(string $model, Throwable $exception): void
+{
+    $lines = [
+        'Upgrade model ' . $model . ' failed.',
+        get_class($exception) . ': ' . $exception->getMessage(),
+        'File: ' . $exception->getFile() . ':' . $exception->getLine(),
+        'Stack trace:',
+        $exception->getTraceAsString(),
+    ];
+    fwrite(STDERR, implode(PHP_EOL, $lines) . PHP_EOL);
+}
+
+function config_problem(): string
+{
+    if (!is_file(CONFIG_FILE)) {
+        return CONFIG_FILE . ' is missing';
+    }
+    load_store_config();
+    $missing = [];
+    if (db_value('DB_HOSTNAME') === '') {
+        $missing[] = 'DB_HOSTNAME';
+    }
+    if (db_value('DB_USERNAME') === '') {
+        $missing[] = 'DB_USERNAME';
+    }
+    if ($missing === []) {
+        return '';
+    }
+    return CONFIG_FILE . ' is missing ' . implode(' and ', $missing);
+}
+
 function run_upgrade_models(array $settings): void
 {
     define_install_paths();
@@ -369,6 +437,21 @@ function run_upgrade_models(array $settings): void
     $loader = new Loader($registry);
     $registry->set('load', $loader);
     $registry->set('db', new DB(DB_DRIVER, DB_HOSTNAME, DB_USERNAME, DB_PASSWORD, DB_DATABASE, DB_PORT));
+    // Model 1006 calls cache->delete(). The shop cache is not needed for the schema change.
+    $registry->set('cache', new class {
+        public function get($key)
+        {
+            return null;
+        }
+
+        public function set($key, $value, $expire = 0): void
+        {
+        }
+
+        public function delete($key): void
+        {
+        }
+    });
 
     $files = glob(DIR_APPLICATION . 'model/upgrade/*.php');
     if (!$files) {
@@ -376,16 +459,26 @@ function run_upgrade_models(array $settings): void
     }
     sort($files, SORT_STRING);
 
-    foreach ($files as $file) {
-        $name = basename($file, '.php');
-        fwrite(STDOUT, 'Running upgrade ' . $name . PHP_EOL);
-        require_once $file;
-        $class = 'ModelUpgrade' . preg_replace('/[^a-zA-Z0-9]/', '', $name);
-        if (!class_exists($class)) {
-            fail('Upgrade class ' . $class . ' was not found');
+    $snapshots = snapshot_configs();
+    try {
+        foreach ($files as $file) {
+            $name = basename($file, '.php');
+            fwrite(STDOUT, 'Running upgrade ' . $name . PHP_EOL);
+            require_once $file;
+            $class = 'ModelUpgrade' . preg_replace('/[^a-zA-Z0-9]/', '', $name);
+            if (!class_exists($class)) {
+                fail('Upgrade class ' . $class . ' was not found');
+            }
+            $model = new $class($registry);
+            try {
+                $model->upgrade();
+            } catch (Throwable $exception) {
+                report_upgrade_failure($name, $exception);
+                fail('Upgrade model ' . $name . ' failed.');
+            }
         }
-        $model = new $class($registry);
-        $model->upgrade();
+    } finally {
+        restore_configs($snapshots);
     }
 }
 
@@ -586,6 +679,12 @@ $command = $argv[1] ?? '';
 switch ($command) {
     case 'configured':
         exit(store_configured() ? 0 : 1);
+    case 'config-problem':
+        $problem = config_problem();
+        if ($problem !== '') {
+            fwrite(STDOUT, $problem);
+        }
+        exit($problem === '' ? 0 : 1);
     case 'export':
         $target = $argv[2] ?? '';
         if ($target === '') {
@@ -620,5 +719,5 @@ switch ($command) {
     case 'current':
         exit(marker_is_current() ? 0 : 1);
     default:
-        fail('Usage: opencart-maint.php configured|export|tables|ping|storage-path|version|upgrade-if-needed|mark|apply-store|current');
+        fail('Usage: opencart-maint.php configured|config-problem|export|tables|ping|storage-path|version|upgrade-if-needed|mark|apply-store|current');
 }

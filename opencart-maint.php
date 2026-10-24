@@ -239,22 +239,120 @@ function quiet_incompatible_extensions(): void
         fail('Could not switch off third-party analytics extensions: ' . $link->error);
     }
 
-    $modifications = '`' . $prefix . 'modification`';
-    $exists = $link->query("SHOW TABLES LIKE '" . $link->real_escape_string($prefix . 'modification') . "'");
-    if ($exists instanceof mysqli_result && $exists->num_rows > 0) {
-        if (!$link->query("UPDATE {$modifications} SET `status` = 0 WHERE `status` != 0")) {
-            fail('Could not disable modifications: ' . $link->error);
-        }
-        if ($link->affected_rows > 0) {
-            fwrite(STDOUT, 'Disabled ' . $link->affected_rows . ' modification records' . PHP_EOL);
-        }
-    }
-
     $insert = "INSERT INTO {$table} SET `store_id` = '0', `code` = 'config', `key` = '{$escapedQuiet}', `value` = '1', `serialized` = '0'";
     if (!$link->query($insert)) {
         fail('Could not record the extension check: ' . $link->error);
     }
     $link->close();
+}
+
+function modification_snapshot_file(): string
+{
+    return storage_path() . '.docker-enabled-modifications';
+}
+
+function read_modification_snapshot(): array
+{
+    $file = modification_snapshot_file();
+    if (!is_file($file)) {
+        return [];
+    }
+    $decoded = json_decode((string) file_get_contents($file), true);
+    if (!is_array($decoded)) {
+        return [];
+    }
+    $rows = [];
+    foreach ($decoded as $row) {
+        if (!is_array($row) || !isset($row['id'])) {
+            continue;
+        }
+        $rows[] = [
+            'id' => (int) $row['id'],
+            'name' => isset($row['name']) ? (string) $row['name'] : '',
+        ];
+    }
+    return $rows;
+}
+
+function pause_enabled_modifications(mysqli $link, string $prefix): void
+{
+    $exists = $link->query("SHOW TABLES LIKE '" . $link->real_escape_string($prefix . 'modification') . "'");
+    if (!$exists instanceof mysqli_result || $exists->num_rows < 1) {
+        return;
+    }
+
+    $modifications = '`' . $prefix . 'modification`';
+    $found = $link->query("SELECT `modification_id`, `name` FROM {$modifications} WHERE `status` = 1");
+    if (!$found instanceof mysqli_result) {
+        fail('Could not read modification records: ' . $link->error);
+    }
+    $rows = [];
+    while ($row = $found->fetch_assoc()) {
+        $rows[] = [
+            'id' => (int) $row['modification_id'],
+            'name' => (string) $row['name'],
+        ];
+    }
+    $encoded = json_encode($rows);
+    if ($encoded === false || file_put_contents(modification_snapshot_file(), $encoded) === false) {
+        fail('Could not record which modifications are enabled');
+    }
+    chmod(modification_snapshot_file(), 0640);
+    if ($rows === []) {
+        fwrite(STDOUT, 'No modifications are enabled' . PHP_EOL);
+        return;
+    }
+
+    $ids = [];
+    foreach ($rows as $row) {
+        $ids[] = (string) $row['id'];
+    }
+    if (!$link->query("UPDATE {$modifications} SET `status` = 0 WHERE `modification_id` IN (" . implode(',', $ids) . ')')) {
+        fail('Could not pause modifications: ' . $link->error);
+    }
+    foreach ($rows as $row) {
+        fwrite(STDOUT, 'Paused modification ' . $row['name'] . PHP_EOL);
+    }
+}
+
+function resume_modifications(?mysqli $link = null, ?string $prefix = null): void
+{
+    $file = modification_snapshot_file();
+    if (!is_file($file)) {
+        return;
+    }
+    $rows = read_modification_snapshot();
+    $ownLink = false;
+    if (!$link instanceof mysqli) {
+        $settings = connection_settings();
+        if ($settings['database'] === '') {
+            fail('Database name is missing from config.php');
+        }
+        try {
+            $link = connect($settings, true);
+        } catch (Throwable $exception) {
+            fail('Database connection failed: ' . $exception->getMessage());
+        }
+        $prefix = $settings['prefix'];
+        $ownLink = true;
+    }
+    if ($rows !== []) {
+        $ids = [];
+        foreach ($rows as $row) {
+            $ids[] = (string) $row['id'];
+        }
+        $modifications = '`' . $prefix . 'modification`';
+        if (!$link->query("UPDATE {$modifications} SET `status` = 1 WHERE `modification_id` IN (" . implode(',', $ids) . ')')) {
+            fail('Could not restore modifications: ' . $link->error);
+        }
+        foreach ($rows as $row) {
+            fwrite(STDOUT, 'Restored modification ' . $row['name'] . PHP_EOL);
+        }
+    }
+    unlink($file);
+    if ($ownLink) {
+        $link->close();
+    }
 }
 
 function clear_directory(string $directory): void
@@ -569,6 +667,9 @@ function upgrade_if_needed(): void
         return;
     }
 
+    // A previous attempt may have paused modifications and then stopped.
+    resume_modifications($link, $settings['prefix']);
+
     $backupDir = storage_path() . 'backup';
     if (!is_dir($backupDir) && !mkdir($backupDir, 0775, true) && !is_dir($backupDir)) {
         warn('Could not create ' . $backupDir . '. The schema upgrade will continue without a database dump.');
@@ -580,20 +681,29 @@ function upgrade_if_needed(): void
         }
     }
 
-    try {
-        run_upgrade_models($settings);
-    } catch (Throwable $exception) {
-        fail('Upgrade failed: ' . $exception->getMessage());
-    }
+    register_shutdown_function(static function () use ($link, $settings): void {
+        resume_modifications($link, $settings['prefix']);
+    });
 
     try {
-        clear_directory(storage_path() . 'cache');
-        clear_directory(storage_path() . 'modification');
-    } catch (Throwable $exception) {
-        fail('Could not clear cache: ' . $exception->getMessage());
+        pause_enabled_modifications($link, $settings['prefix']);
+        try {
+            run_upgrade_models($settings);
+        } catch (Throwable $exception) {
+            fail('Upgrade failed: ' . $exception->getMessage());
+        }
+
+        try {
+            clear_directory(storage_path() . 'cache');
+            clear_directory(storage_path() . 'modification');
+        } catch (Throwable $exception) {
+            fail('Could not clear cache: ' . $exception->getMessage());
+        }
+        write_marker($link, $settings['prefix']);
+        fwrite(STDOUT, 'Database upgraded to OpenCart ' . OPENCART_VERSION . PHP_EOL);
+    } finally {
+        resume_modifications($link, $settings['prefix']);
     }
-    write_marker($link, $settings['prefix']);
-    fwrite(STDOUT, 'Database upgraded to OpenCart ' . OPENCART_VERSION . PHP_EOL);
 }
 
 function mark_installed(): void
@@ -776,6 +886,7 @@ switch ($command) {
         exit(marker_is_current() ? 0 : 1);
     case 'quiet-extensions':
         quiet_incompatible_extensions();
+        resume_modifications();
         exit(0);
     default:
         fail('Usage: opencart-maint.php configured|config-problem|export|tables|ping|storage-path|version|upgrade-if-needed|mark|apply-store|current|quiet-extensions');

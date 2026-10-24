@@ -483,12 +483,82 @@ function define_install_paths(): void
     }
 }
 
+function config_define_value(string $file, string $name): ?string
+{
+    $lines = file($file, FILE_IGNORE_NEW_LINES);
+    if ($lines === false) {
+        return null;
+    }
+
+    $pattern = '/define\\s*\\(\\s*[\'"]' . preg_quote($name, '/') . '[\'"]\\s*,\\s*[\'"]([^\'"]*)[\'"]\\s*\\)/';
+    foreach ($lines as $line) {
+        if (preg_match($pattern, $line, $match)) {
+            return $match[1];
+        }
+    }
+
+    return null;
+}
+
+function admin_directory(): string
+{
+    $configs = glob(HTML_ROOT . '*/config.php');
+    if ($configs === false) {
+        return 'admin';
+    }
+
+    $html = realpath(rtrim(HTML_ROOT, '/'));
+    $matches = [];
+    foreach ($configs as $config) {
+        if (config_define_value($config, 'DIR_CATALOG') === null && config_define_value($config, 'HTTP_CATALOG') === null) {
+            continue;
+        }
+
+        $application = config_define_value($config, 'DIR_APPLICATION');
+        if ($application === null || $application === '') {
+            continue;
+        }
+
+        $folder = basename(rtrim($application, '/'));
+        $configFolder = basename(dirname($config));
+        if ($folder !== $configFolder || !preg_match('/^[A-Za-z0-9._-]+$/', $folder)) {
+            continue;
+        }
+        if (in_array($folder, ['catalog', 'system', 'image'], true)) {
+            continue;
+        }
+
+        $realConfigDir = realpath(dirname($config));
+        $realApp = realpath(rtrim($application, '/'));
+        if ($html === false || $realConfigDir === false || $realApp === false) {
+            continue;
+        }
+        if ($realConfigDir !== $realApp || dirname($realApp) !== $html) {
+            continue;
+        }
+
+        $matches[$folder] = $config;
+    }
+
+    if (count($matches) === 1) {
+        return (string) array_key_first($matches);
+    }
+    if (count($matches) > 1) {
+        warn('More than one admin config was found. Admin files will be copied to admin/.');
+    }
+
+    return 'admin';
+}
+
 function shop_config_paths(): array
 {
-    return [
-        HTML_ROOT . 'config.php',
-        HTML_ROOT . 'admin/config.php',
-    ];
+    $paths = [HTML_ROOT . 'config.php'];
+    $admin = HTML_ROOT . admin_directory() . '/config.php';
+    if (is_file($admin)) {
+        $paths[] = $admin;
+    }
+
+    return $paths;
 }
 
 function snapshot_configs(): array
@@ -870,6 +940,9 @@ switch ($command) {
     case 'storage-path':
         fwrite(STDOUT, storage_path());
         exit(0);
+    case 'admin-directory':
+        fwrite(STDOUT, admin_directory());
+        exit(0);
     case 'version':
         fwrite(STDOUT, installed_version());
         exit(0);
@@ -889,5 +962,5 @@ switch ($command) {
         resume_modifications();
         exit(0);
     default:
-        fail('Usage: opencart-maint.php configured|config-problem|export|tables|ping|storage-path|version|upgrade-if-needed|mark|apply-store|current|quiet-extensions');
+        fail('Usage: opencart-maint.php configured|config-problem|export|tables|ping|storage-path|admin-directory|version|upgrade-if-needed|mark|apply-store|current|quiet-extensions');
 }

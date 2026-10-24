@@ -9,6 +9,7 @@ SRC=/usr/src/opencart
 MAINT=/usr/local/bin/opencart-maint.php
 SOURCE_VERSION_FILE="${HTML}/.docker-source-version"
 TARGET_VERSION=3.0.5.1
+ADMIN_DIR=admin
 
 log() {
     local level="$1"
@@ -113,26 +114,51 @@ source_version() {
     fi
 }
 
+resolve_admin_directory() {
+    local dir
+    dir=$(php "$MAINT" admin-directory)
+    if [[ ! "$dir" =~ ^[A-Za-z0-9._-]+$ ]]; then
+        log "ERROR" "Refusing admin directory name: ${dir}"
+        exit 1
+    fi
+    printf '%s' "$dir"
+}
+
 sync_tree() {
     local mode="$1"
+    local admin_dir="${2:-admin}"
     local -a excludes=(
         --exclude '/config.php'
-        --exclude '/admin/config.php'
         --exclude '/.docker-source-version'
         --exclude '/.docker-pending-store-settings'
     )
     if [ "$mode" = "existing" ]; then
         excludes+=(--exclude '/image/' --exclude '/system/storage/')
     fi
-    log "INFO" "Syncing OpenCart files (${mode})"
+    if [ "$admin_dir" = "admin" ]; then
+        excludes+=(--exclude '/admin/config.php')
+        log "INFO" "Syncing OpenCart files (${mode})"
+    else
+        excludes+=(--exclude '/admin/')
+        log "INFO" "Syncing OpenCart files (${mode}), admin directory ${admin_dir}"
+    fi
     rsync -a "${excludes[@]}" "${SRC}/" "${HTML}/"
+    if [ "$admin_dir" != "admin" ]; then
+        log "INFO" "Syncing admin files to ${admin_dir}"
+        mkdir -p "${HTML}/${admin_dir}"
+        rsync -a --exclude '/config.php' "${SRC}/admin/" "${HTML}/${admin_dir}/"
+        if [ -d "${HTML}/admin" ]; then
+            log "WARNING" "Stock admin/ is also present. Admin files were copied to ${admin_dir}/ only."
+        fi
+    fi
     if [ ! -f "${HTML}/.htaccess" ] && [ -f "${HTML}/.htaccess.txt" ]; then
         cp "${HTML}/.htaccess.txt" "${HTML}/.htaccess"
     fi
-    ensure_config_files
+    ensure_config_files "$admin_dir"
 }
 
 ensure_config_files() {
+    local admin_dir="${1:-admin}"
     if [ ! -f "${HTML}/config.php" ]; then
         if [ -s "${HTML}/config-dist.php" ]; then
             cp "${HTML}/config-dist.php" "${HTML}/config.php"
@@ -140,11 +166,11 @@ ensure_config_files() {
             : > "${HTML}/config.php"
         fi
     fi
-    if [ ! -f "${HTML}/admin/config.php" ]; then
-        if [ -s "${HTML}/admin/config-dist.php" ]; then
-            cp "${HTML}/admin/config-dist.php" "${HTML}/admin/config.php"
+    if [ ! -f "${HTML}/${admin_dir}/config.php" ]; then
+        if [ -s "${HTML}/${admin_dir}/config-dist.php" ]; then
+            cp "${HTML}/${admin_dir}/config-dist.php" "${HTML}/${admin_dir}/config.php"
         else
-            : > "${HTML}/admin/config.php"
+            : > "${HTML}/${admin_dir}/config.php"
         fi
     fi
 }
@@ -255,7 +281,7 @@ finish_existing_store() {
     php "$MAINT" quiet-extensions
     rm -rf "${HTML}/install"
     rm -f "$SOURCE_VERSION_FILE"
-    chmod 644 "${HTML}/config.php" "${HTML}/admin/config.php" 2>/dev/null || true
+    chmod 644 "${HTML}/config.php" "${HTML}/${ADMIN_DIR}/config.php" 2>/dev/null || true
     log "INFO" "Existing store is ready"
 }
 
@@ -271,7 +297,10 @@ if [ -f "$SOURCE_VERSION_FILE" ] && ! store_configured; then
 fi
 
 if store_configured || { cli_env_ready && php "$MAINT" tables; }; then
-    sync_tree existing
+    if store_configured; then
+        ADMIN_DIR=$(resolve_admin_directory)
+    fi
+    sync_tree existing "$ADMIN_DIR"
     sync_vendor
     finish_existing_store
 elif cli_env_ready; then

@@ -59,10 +59,10 @@ MySQL 8 and Percona 8 with `mysql_native_password` both work. Keep the database 
 
 On the first start the container:
 
-1. Copies the 3.0.5.1 core files over the shop. Extension files, vQmod, `config.php`, `admin/config.php`, and `image/` stay in place.
+1. Copies the 3.0.5.1 core files over the shop. Extension files, vQmod, `config.php`, the admin `config.php`, and `image/` stay in place. A renamed admin directory, such as `shopadmin`, is read from that admin `config.php` and the new admin files are copied there. The stock `admin/` folder is not added beside it.
 2. Leaves storage uploads, downloads, sessions, and logs in place.
 3. Tries to write a SQL dump into the storage `backup/` directory. If that dump cannot be written, the log shows a warning and the upgrade continues.
-4. Upgrades the database schema once. If an upgrade model rewrites `config.php` or `admin/config.php`, those files are put back as they were.
+4. Upgrades the database schema once. If an upgrade model rewrites `config.php` or the admin `config.php`, those files are put back as they were.
 5. Clears `cache/` and `modification/`, then removes `install/` when the upgrade succeeds.
 6. Switches off analytics extensions that do not ship with 3.0.5.1, including Tag Manager. Modifications that are enabled are recorded, switched off for the schema upgrade, and switched back on afterwards, including when the upgrade fails. Deprecation notices are written to the container log and the storage error log, and are not printed in the page.
 
@@ -301,7 +301,7 @@ Do not point this branch at the `latest` tag. That tag is a different OpenCart r
 
 ## What an upgrade keeps
 
-- `config.php` and `admin/config.php`, including the database host, table prefix, storage path, and the public site URL
+- `config.php` and the admin `config.php`, including a renamed admin directory, the database host, table prefix, storage path, and the public site URL
 - Uploaded images under `image/`
 - Storage uploads, downloads, sessions, and logs
 - Extra extension files and vQmod
@@ -339,7 +339,7 @@ OpenCart 4 is a different image. This branch does not install it.
 **The upgrade stopped and the shop did not come up**
 
 - Read `docker compose logs opencart`. The log names the upgrade model, the file, the line, and the stack trace
-- `config.php` and `admin/config.php` are restored if a model rewrote them. If either file is missing `DB_HOSTNAME` or `DB_USERNAME`, the container stops and does not open the web installer
+- `config.php` and the admin `config.php` are restored if a model rewrote them. If either file is missing `DB_HOSTNAME` or `DB_USERNAME`, the container stops and does not open the web installer
 - A SQL dump is in the storage `backup/` directory when the dump itself succeeded. A warning about the dump does not stop the upgrade
 - Fix the cause and start the container again. It retries the schema upgrade
 

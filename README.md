@@ -64,6 +64,7 @@ On the first start the container:
 3. Tries to write a SQL dump into the storage `backup/` directory. If that dump cannot be written, the log shows a warning and the upgrade continues.
 4. Upgrades the database schema once. If an upgrade model rewrites `config.php` or `admin/config.php`, those files are put back as they were.
 5. Clears `cache/` and `modification/`, then removes `install/` when the upgrade succeeds.
+6. Switches off analytics extensions that do not ship with 3.0.5.1, including Tag Manager, and disables modification records so a later refresh does not apply the old XML. The files stay on disk and can be switched back on in the admin.
 
 Take your own backup of the database before that first start. The dump in storage is only attempted as a second copy, and a shop whose database client cannot complete it still upgrades. After the shop is up, open Extensions, then Modifications, and refresh so your extensions are compiled again.
 

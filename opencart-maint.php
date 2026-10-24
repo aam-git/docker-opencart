@@ -201,6 +201,62 @@ function write_marker(mysqli $link, string $prefix): void
     }
 }
 
+function quiet_incompatible_extensions(): void
+{
+    $settings = connection_settings();
+    if ($settings['database'] === '') {
+        fail('Database name is missing from config.php');
+    }
+    try {
+        $link = connect($settings, true);
+    } catch (Throwable $exception) {
+        fail('Database connection failed: ' . $exception->getMessage());
+    }
+
+    $prefix = $settings['prefix'];
+    $table = '`' . $prefix . 'setting`';
+    $quietKey = 'config_docker_opencart_extensions_quieted';
+    $escapedQuiet = $link->real_escape_string($quietKey);
+    $already = $link->query("SELECT `value` FROM {$table} WHERE `key` = '{$escapedQuiet}' AND `code` = 'config' LIMIT 1");
+    if ($already instanceof mysqli_result && $already->num_rows > 0) {
+        $link->close();
+        return;
+    }
+
+    $like = "analytics\\_%\\_status";
+    $keep = 'analytics_google_analytics_status';
+    $found = $link->query(
+        "SELECT `key` FROM {$table} WHERE `key` LIKE '{$like}' AND `key` != '{$keep}' AND `value` != '0'"
+    );
+    if ($found instanceof mysqli_result) {
+        while ($row = $found->fetch_assoc()) {
+            fwrite(STDOUT, 'Switched off ' . $row['key'] . PHP_EOL);
+        }
+    }
+    if (!$link->query(
+        "UPDATE {$table} SET `value` = '0' WHERE `key` LIKE '{$like}' AND `key` != '{$keep}' AND `value` != '0'"
+    )) {
+        fail('Could not switch off third-party analytics extensions: ' . $link->error);
+    }
+
+    $modifications = '`' . $prefix . 'modification`';
+    $exists = $link->query("SHOW TABLES LIKE '" . $link->real_escape_string($prefix . 'modification') . "'");
+    if ($exists instanceof mysqli_result && $exists->num_rows > 0) {
+        if (!$link->query("UPDATE {$modifications} SET `status` = 0 WHERE `status` != 0")) {
+            fail('Could not disable modifications: ' . $link->error);
+        }
+        if ($link->affected_rows > 0) {
+            fwrite(STDOUT, 'Disabled ' . $link->affected_rows . ' modification records' . PHP_EOL);
+        }
+    }
+
+    $insert = "INSERT INTO {$table} SET `store_id` = '0', `code` = 'config', `key` = '{$escapedQuiet}', `value` = '1', `serialized` = '0'";
+    if (!$link->query($insert)) {
+        fail('Could not record the extension check: ' . $link->error);
+    }
+    $link->close();
+}
+
 function clear_directory(string $directory): void
 {
     if (!is_dir($directory)) {
@@ -718,6 +774,9 @@ switch ($command) {
         exit(0);
     case 'current':
         exit(marker_is_current() ? 0 : 1);
+    case 'quiet-extensions':
+        quiet_incompatible_extensions();
+        exit(0);
     default:
-        fail('Usage: opencart-maint.php configured|config-problem|export|tables|ping|storage-path|version|upgrade-if-needed|mark|apply-store|current');
+        fail('Usage: opencart-maint.php configured|config-problem|export|tables|ping|storage-path|version|upgrade-if-needed|mark|apply-store|current|quiet-extensions');
 }

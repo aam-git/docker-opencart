@@ -18,6 +18,11 @@ function fail(string $message, int $code = 1): void
     exit($code);
 }
 
+function warn(string $message): void
+{
+    fwrite(STDERR, 'WARNING: ' . $message . PHP_EOL);
+}
+
 function config_define_names(): array
 {
     return [
@@ -216,7 +221,7 @@ function clear_directory(string $directory): void
     }
 }
 
-function dump_database(array $settings, string $destination): void
+function dump_database(array $settings, string $destination): bool
 {
     $command = [
         'mysqldump',
@@ -230,9 +235,6 @@ function dump_database(array $settings, string $destination): void
         '--default-character-set=utf8mb4',
         '--routines',
         '--triggers',
-        // MariaDB 11 verifies TLS certificates. MySQL and Percona Docker servers
-        // present a self-signed certificate, which makes the dump fail closed.
-        '--skip-ssl-verify-server-cert',
         $settings['database'],
     ];
 
@@ -243,15 +245,23 @@ function dump_database(array $settings, string $destination): void
     ], $pipes);
 
     if (!is_resource($process)) {
-        fail('Could not start mysqldump');
+        warn('Could not start mysqldump. The schema upgrade will continue.');
+        return false;
     }
 
     $error = stream_get_contents($pipes[2]);
     fclose($pipes[2]);
     $status = proc_close($process);
     if ($status !== 0 || !is_file($destination) || filesize($destination) === 0) {
-        fail('Database dump failed: ' . trim((string) $error));
+        if (is_file($destination)) {
+            unlink($destination);
+        }
+        $detail = trim((string) $error);
+        warn('Database dump failed. The schema upgrade will continue.' . ($detail !== '' ? ' ' . $detail : ''));
+        return false;
     }
+
+    return true;
 }
 
 function define_install_paths(): void
@@ -402,12 +412,14 @@ function upgrade_if_needed(): void
 
     $backupDir = storage_path() . 'backup';
     if (!is_dir($backupDir) && !mkdir($backupDir, 0775, true) && !is_dir($backupDir)) {
-        fail('Could not create ' . $backupDir);
+        warn('Could not create ' . $backupDir . '. The schema upgrade will continue without a database dump.');
+    } else {
+        $dump = $backupDir . '/pre-upgrade-' . gmdate('Ymd-His') . '.sql';
+        fwrite(STDOUT, 'Writing database dump to ' . $dump . PHP_EOL);
+        if (dump_database($settings, $dump)) {
+            chmod($dump, 0640);
+        }
     }
-    $dump = $backupDir . '/pre-upgrade-' . gmdate('Ymd-His') . '.sql';
-    fwrite(STDOUT, 'Writing database dump to ' . $dump . PHP_EOL);
-    dump_database($settings, $dump);
-    chmod($dump, 0640);
 
     try {
         run_upgrade_models($settings);

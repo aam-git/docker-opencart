@@ -2,7 +2,7 @@
 <modification>
   <name>AAM PHP 8 Repair</name>
   <code>AAM-php8-repair</code>
-  <version>1.5</version>
+  <version>1.6</version>
   <author>AAM Services</author>
   <link>https://aamservices.uk</link>
 
@@ -124,6 +124,24 @@ $0]]></add>
       <ignoreif><![CDATA[CurrentFont['cw'][intval($char)]]]></ignoreif>
       <search regex="true"><![CDATA[/\$this->CurrentFont\['cw'\]\[\$char\]/]]></search>
       <add><![CDATA[$this->CurrentFont['cw'][intval($char)]]]></add>
+    </operation>
+    <operation error="skip">
+      <ignoreif><![CDATA[modification(DIR_SYSTEM.'library/me_pdf_invoice/tcpdf/]]></ignoreif>
+      <search regex="true"><![CDATA[/require_once\(dirname\(__FILE__\)\.(['"])\/([^'"]+)\1\);/]]></search>
+      <add><![CDATA[require_once(modification(DIR_SYSTEM.'library/me_pdf_invoice/tcpdf/$2'));]]></add>
+    </operation>
+  </file>
+
+  <file path="system/library/me_pdf_invoice.php|system/library/me_pdf_invoice/*.php|system/library/me_pdf_invoice/*/*.php|admin/{controller,model}/sale/*.php|admin/{controller,model}/extension/*/*.php|catalog/{controller,model}/extension/*/*.php|catalog/{controller,model}/{checkout,mail,account}/*.php">
+    <operation error="skip">
+      <ignoreif><![CDATA[modification(DIR_SYSTEM . 'library/me_pdf_invoice/tcpdf/tcpdf.php')]]></ignoreif>
+      <search regex="true"><![CDATA[/(require(?:_once)?\s*\(\s*)(?!modification\s*\()((?:DIR_SYSTEM\s*\.\s*)?['"][^'"]*me_pdf_invoice\/tcpdf\/tcpdf\.php['"])\s*\)/]]></search>
+      <add><![CDATA[$1modification($2))]]></add>
+    </operation>
+    <operation error="skip">
+      <ignoreif><![CDATA[modification(DIR_SYSTEM . 'library/me_pdf_invoice/tcpdf/tcpdf.php')]]></ignoreif>
+      <search regex="true"><![CDATA[/(require(?:_once)?)\s+(?!modification\s*\()((?:DIR_SYSTEM\s*\.\s*)?['"][^'"]*me_pdf_invoice\/tcpdf\/tcpdf\.php['"])\s*;/]]></search>
+      <add><![CDATA[$1 modification($2);]]></add>
     </operation>
   </file>
 

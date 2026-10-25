@@ -103,9 +103,6 @@ COPY aam-php8-repair.ocmod.xml /usr/local/share/opencart/aam-php8-repair.ocmod.x
 
 RUN a2enconf opencart && chmod 755 /usr/local/bin/entrypoint.sh /usr/local/bin/opencart-maint.php
 
-# No healthcheck. A maintenance 503 must not take the container out of the proxy.
-HEALTHCHECK NONE
-
 EXPOSE 80 443
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

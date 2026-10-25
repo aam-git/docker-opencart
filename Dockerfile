@@ -73,7 +73,8 @@ RUN set -eux; \
     sed -i 's/array \$errcontext)/array \$errcontext = [])/' /usr/src/opencart/install/cli_install.php; \
     # 1006 disables every modification. Leave the records as the shop set them.
     sed -i '/modification` SET status = 0/d' /usr/src/opencart/install/model/upgrade/1006.php; \
-    php -r '$$path="/usr/src/opencart/system/framework.php"; $$source=file_get_contents($$path); $$needle="\tif (!(error_reporting() & \$$code)) {\n\t\treturn false;\n\t}\n"; $$block=$$needle."\n\tif (\$$code === E_DEPRECATED || \$$code === E_USER_DEPRECATED) {\n\t\t\$$log->write(\"PHP Deprecated: \" . \$$message . \" in \" . \$$file . \" on line \" . \$$line);\n\t\terror_log(\"PHP Deprecated: \" . \$$message . \" in \" . \$$file . \" on line \" . \$$line);\n\t\treturn true;\n\t}\n"; if ($$source===false || substr_count($$source, $$needle)!==1) { fwrite(STDERR, "framework.php error handler anchor was not found\n"); exit(1);} if (file_put_contents($$path, str_replace($$needle, $$block, $$source))===false) { fwrite(STDERR, "framework.php could not be updated\n"); exit(1);}'; \
+    # Deprecations must not reach the error handler. Logging each one makes admin slow.
+    php -r '$$path="/usr/src/opencart/system/startup.php"; $$source=file_get_contents($$path); $$needle="error_reporting(E_ALL);"; $$replace="error_reporting(E_ALL & ~E_DEPRECATED & ~E_USER_DEPRECATED);"; if ($$source===false || substr_count($$source, $$needle)!==1) { fwrite(STDERR, "startup.php error_reporting anchor was not found\n"); exit(1);} if (file_put_contents($$path, str_replace($$needle, $$replace, $$source))===false) { fwrite(STDERR, "startup.php could not be updated\n"); exit(1);}'; \
     cp -a /usr/src/opencart/. /var/www/html/; \
     if [ -s /var/www/html/config-dist.php ]; then \
         cp /var/www/html/config-dist.php /var/www/html/config.php; \

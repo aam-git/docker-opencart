@@ -44,8 +44,7 @@ log_errors = On
 error_log = /dev/stderr
 opcache.enable = 1
 opcache.enable_cli = 0
-opcache.validate_timestamps = 1
-opcache.revalidate_freq = 0
+opcache.validate_timestamps = 0
 EOF
     log "INFO" "PHP memory_limit=${memory} max_execution_time=${execution}"
 }

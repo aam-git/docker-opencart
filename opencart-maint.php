@@ -995,21 +995,32 @@ function ensure_php8_repair_modification(): void
     }
 
     $code = $link->real_escape_string(PHP8_REPAIR_CODE);
-    $found = $link->query("SELECT `modification_id` FROM {$table} WHERE `code` = '{$code}' LIMIT 1");
-    if (!$found instanceof mysqli_result) {
-        fail('Could not read modification records: ' . $link->error);
-    }
-    if ($found->num_rows > 0) {
-        fwrite(STDOUT, 'PHP 8 repair modification is already installed' . PHP_EOL);
-        $link->close();
-        return;
-    }
-
     $name = $link->real_escape_string((string) $document->name);
     $author = $link->real_escape_string((string) $document->author);
     $version = $link->real_escape_string((string) $document->version);
     $repairLink = $link->real_escape_string((string) $document->link);
     $escapedXml = $link->real_escape_string($xml);
+    $found = $link->query("SELECT `modification_id`, `version` FROM {$table} WHERE `code` = '{$code}' LIMIT 1");
+    if (!$found instanceof mysqli_result) {
+        fail('Could not read modification records: ' . $link->error);
+    }
+    if ($found->num_rows > 0) {
+        $row = $found->fetch_assoc();
+        if ((string) $row['version'] === (string) $document->version) {
+            fwrite(STDOUT, 'PHP 8 repair modification is already installed' . PHP_EOL);
+            $link->close();
+            return;
+        }
+        $id = (int) $row['modification_id'];
+        $update = "UPDATE {$table} SET `name` = '{$name}', `author` = '{$author}', `version` = '{$version}', `link` = '{$repairLink}', `xml` = '{$escapedXml}' WHERE `modification_id` = {$id}";
+        if (!$link->query($update)) {
+            fail('Could not update the PHP 8 repair modification: ' . $link->error);
+        }
+        fwrite(STDOUT, 'Updated PHP 8 repair modification to ' . $document->version . PHP_EOL);
+        $link->close();
+        return;
+    }
+
     $added = gmdate('Y-m-d H:i:s');
     $insert = "INSERT INTO {$table} SET `extension_install_id` = '0', `name` = '{$name}', `code` = '{$code}', `author` = '{$author}', `version` = '{$version}', `link` = '{$repairLink}', `xml` = '{$escapedXml}', `status` = '1', `date_added` = '{$added}'";
     if (!$link->query($insert)) {

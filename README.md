@@ -42,7 +42,7 @@ The store is then at [http://localhost](http://localhost). The admin is at [http
 
 The sample compose file names the database service `mysql`, mounts the shop at `/var/www`, and uses MySQL 8.0. Set `MYSQL_IMAGE=percona:8` when you want Percona instead. MySQL is published on `127.0.0.1` only.
 
-With the admin username, password, email, and the `DB_*` variables set, the container installs the shop for you. Without those variables it leaves the web installer in place, which is how the 3.0.3.6 and 3.0.3.8 images were installed.
+With the admin username, password, email, and the `DB_*` variables set, the container installs the shop for you. Without those variables it leaves the web installer in place.
 
 ## Upgrade an existing shop
 
@@ -50,7 +50,7 @@ Keep the compose file you already run. Change only the OpenCart image to `ghcr.i
 
 Leave these as they are:
 
-- The app volume, mounted at `/var/www` (a mount at `/var/www/html` from an older sample file also works)
+- The app volume, mounted at `/var/www`
 - The database service. The hostname is read from `config.php`, so `mysql` and `database` both work
 - Traefik, or whichever proxy terminates TLS and routes to port 80
 - `PHP_MEMORY_LIMIT`, including a value such as `2G`
@@ -59,17 +59,15 @@ MySQL 8 and Percona 8 with `mysql_native_password` both work. Keep the database 
 
 On the first start the container:
 
-1. Copies the 3.0.5.1 core files over the shop. Extension files, vQmod, `config.php`, the admin `config.php`, and `image/` stay in place. A renamed admin directory, such as `shopadmin`, is read from that admin `config.php` and the new admin files are copied there. The stock `admin/` folder is not added beside it.
+1. Copies the 3.0.5.1 core files over the shop. Extension files, vQmod, `config.php`, the admin `config.php`, and `image/` stay in place. A renamed admin directory, such as `shopadmin`, is read from that admin `config.php` and the new admin files are copied there.
 2. Leaves storage uploads, downloads, sessions, and logs in place.
-3. Tries to write a SQL dump into the storage `backup/` directory. If that dump cannot be written, the log shows a warning and the upgrade continues.
-4. Upgrades the database schema once. Upgrade models that edit config files are pointed at the admin directory found by scanning those configs. If a model rewrites `config.php` or the admin `config.php`, those files are put back as they were.
+3. Writes a SQL dump into the storage `backup/` directory when it can.
+4. Upgrades the database schema once. Config files are restored if an upgrade model changes them.
 5. Clears `cache/` and `modification/`, then removes `install/` when the upgrade succeeds.
-6. Modifications that are enabled are recorded, switched off for the schema upgrade, and switched back on afterwards, including when the upgrade fails. Deprecation notices are written to the container log and the storage error log, and are not printed in the page.
-7. Adds the PHP 8 repair modification when its code is not already present.
+6. Modifications that are enabled are recorded, switched off for the schema upgrade, and switched back on afterwards.
+7. Adds the PHP 8 repair modification when its code is not already present, and updates it when the image has a newer version.
 
-Take your own backup of the database before that first start. The dump in storage is only attempted as a second copy, and a shop whose database client cannot complete it still upgrades. After the shop is up, open Extensions, then Modifications, and refresh so the repair and your other extensions are compiled.
-
-`DB_*` and `OPENCART_*` variables left over from a 3.0.4.1 compose file are ignored once `config.php` is filled, so the installer does not run again and does not replace the public site URL.
+Take your own backup of the database before that first start. After the shop is up, open Extensions, then Modifications, and refresh so the repair and your other extensions are compiled.
 
 ## ⚙️ Configuration
 
@@ -87,9 +85,9 @@ An existing shop does not need these variables. Its `config.php` is used as it s
 | `OPENCART_PASSWORD` | Admin account password | `please_change_this_password` | Yes |
 | `OPENCART_EMAIL` | Admin email address | `admin@example.com` | Yes |
 
-`DB_HOSTNAME`, `DB_USERNAME`, `DB_DATABASE`, and `OPENCART_USERNAME` are also needed before the command-line installer runs. The sample compose file supplies defaults for those. If the admin email, password, or database settings are missing, and the volume is empty, the container starts the web installer instead of exiting.
+`DB_HOSTNAME`, `DB_USERNAME`, `DB_DATABASE`, and `OPENCART_USERNAME` are also needed before the command-line installer runs. The sample compose file supplies defaults for those. If the admin email, password, or database settings are missing, and the volume is empty, the container starts the web installer.
 
-A new command-line install is refused when either password is shorter than 8 characters, or is `password`, `123456`, `admin`, `root`, or `test`. An existing shop is not refused because of the password already stored in `config.php`.
+A new command-line install is refused when either password is shorter than 8 characters, or is `password`, `123456`, `admin`, `root`, or `test`.
 
 #### 🐳 Container Configuration
 
@@ -133,11 +131,13 @@ Used for a new command-line install. The first name, last name, and store name a
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `PHP_MEMORY_LIMIT` | PHP memory limit. `2G` is a valid value. | `256M` |
+| `PHP_MEMORY_LIMIT` | PHP memory limit | `256M` |
 | `PHP_MAX_EXECUTION_TIME` | Script execution timeout, in seconds | `300` |
 | `PHP_UPLOAD_MAX_FILESIZE` | Maximum upload size | `64M` |
 | `PHP_POST_MAX_SIZE` | Maximum form post size. Keep this at least as large as the upload limit. | `64M` |
 | `TZ` | PHP timezone | `UTC` |
+
+OPcache does not check file timestamps. Restart the container after a PHP file change so the new file is loaded.
 
 > **📋 Complete reference**: see `.env.example` for the same settings with short comments.
 
@@ -160,14 +160,14 @@ The container does this on startup:
 
 4. **⚡ Automatic setup**
    - A new command-line install creates the schema, the admin user, and the config files, then applies any store name or admin name you set
-   - An existing shop has the 3.0.5.1 core files copied over it. A database dump is attempted, and the schema is upgraded once even if that dump fails
+   - An existing shop has the 3.0.5.1 core files copied over it, and the schema is upgraded once
    - `install/` is removed after a successful install or upgrade
 
 5. **🚀 Service startup**
    - Launches Apache
    - Makes the store available for use
 
-The command-line installer is never run against an existing shop. That installer would drop the existing tables and rewrite `config.php`.
+The command-line installer is only used for a new shop.
 
 ## 🛡️ Security Features
 
@@ -194,7 +194,7 @@ The command-line installer is never run against an existing shop. That installer
          └── volume mounted at /var/www
 ```
 
-The shop files live at `/var/www/html` inside that volume. If you previously moved storage, `/var/www/storage` is on the same volume and is left in place.
+The shop files live at `/var/www/html` inside that volume. A storage directory at `/var/www/storage` is left in place.
 
 ## 📚 Advanced Usage
 
@@ -220,7 +220,7 @@ OPENCART_EMAIL="admin@yourdomain.com"
 HTTP_PORT=8080
 ```
 
-Terminate TLS on Traefik or another reverse proxy, and route to port 80. An existing shop already has its public URL in `config.php`. Leave that file alone.
+Terminate TLS on Traefik or another reverse proxy, and route to port 80.
 
 For a large catalogue, or while the schema upgrade runs:
 
@@ -249,7 +249,7 @@ Two app containers can also share one MySQL server. Give each container its own 
 
 ### Languages
 
-OpenCart 3.0.5.1 installs in English. Add further languages afterwards from the admin, under System, then Localisation, then Languages. There is no install-time language variable on this image.
+OpenCart 3.0.5.1 installs in English. Add further languages afterwards from the admin, under System, then Localisation, then Languages.
 
 ### Development Setup
 
@@ -307,7 +307,7 @@ Do not point this branch at the `latest` tag. That tag is a different OpenCart r
 - Storage uploads, downloads, sessions, and logs
 - Extra extension files and vQmod
 
-Core files that ship in OpenCart 3.0.5.1 are replaced with that release. A file that only exists because an extension added it is kept. The libraries in the storage `vendor/` directory are updated with this release, so Twig matches it. `cache/` and `modification/` are emptied after a successful upgrade.
+Core files that ship in OpenCart 3.0.5.1 are replaced with that release. A file that only exists because an extension added it is kept. The libraries in the storage `vendor/` directory are updated with this release. `cache/` and `modification/` are emptied after a successful upgrade.
 
 ## Version compatibility
 
@@ -337,18 +337,17 @@ OpenCart 4 is a different image. This branch does not install it.
 - Check that `DB_HOSTNAME` is the compose service name. On the sample file that name is `mysql`
 - Check `DB_PORT` if the database is not on 3306
 
-
 **The upgrade stopped and the shop did not come up**
 
 - Read `docker compose logs opencart`. The log names the upgrade model, the file, the line, and the stack trace
-- `config.php` and the admin `config.php` are restored if a model rewrote them. If either file is missing `DB_HOSTNAME` or `DB_USERNAME`, the container stops and does not open the web installer
-- A SQL dump is in the storage `backup/` directory when the dump itself succeeded. A warning about the dump does not stop the upgrade
+- `config.php` and the admin `config.php` are restored if a model rewrote them
+- A SQL dump is in the storage `backup/` directory when the dump itself succeeded
 - Fix the cause and start the container again. It retries the schema upgrade
 
 **Extensions look missing after the upgrade**
 
 - The extension files are still on disk
-- `modification/` was cleared on purpose
+- `modification/` is cleared during the upgrade
 - In the admin, open Extensions, then Modifications, and refresh
 
 **Table prefix conflicts**
@@ -391,7 +390,7 @@ docker compose exec opencart ls -la /var/www/html/install
 docker compose exec opencart head -n 40 /var/www/html/config.php
 ```
 
-On an upgraded shop, `install/` should be absent, and `config.php` should still contain the previous database hostname and site URL.
+On an upgraded shop, `install/` should be absent.
 
 ## 🤝 Contributing
 

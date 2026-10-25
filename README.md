@@ -62,7 +62,7 @@ On the first start the container:
 1. Copies the 3.0.5.1 core files over the shop. Extension files, vQmod, `config.php`, the admin `config.php`, and `image/` stay in place. A renamed admin directory, such as `shopadmin`, is read from that admin `config.php` and the new admin files are copied there. The stock `admin/` folder is not added beside it.
 2. Leaves storage uploads, downloads, sessions, and logs in place.
 3. Tries to write a SQL dump into the storage `backup/` directory. If that dump cannot be written, the log shows a warning and the upgrade continues.
-4. Upgrades the database schema once. If an upgrade model rewrites `config.php` or the admin `config.php`, those files are put back as they were.
+4. Upgrades the database schema once. Upgrade models that edit config files are pointed at the admin directory found by scanning those configs. If a model rewrites `config.php` or the admin `config.php`, those files are put back as they were.
 5. Clears `cache/` and `modification/`, then removes `install/` when the upgrade succeeds.
 6. Switches off analytics extensions that do not ship with 3.0.5.1, including Tag Manager. Modifications that are enabled are recorded, switched off for the schema upgrade, and switched back on afterwards, including when the upgrade fails. Deprecation notices are written to the container log and the storage error log, and are not printed in the page.
 

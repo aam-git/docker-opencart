@@ -483,21 +483,74 @@ function define_install_paths(): void
     }
 }
 
-function config_define_value(string $file, string $name): ?string
+function config_define_expressions(string $file): array
 {
     $lines = file($file, FILE_IGNORE_NEW_LINES);
     if ($lines === false) {
-        return null;
+        return [];
     }
 
-    $pattern = '/define\\s*\\(\\s*[\'"]' . preg_quote($name, '/') . '[\'"]\\s*,\\s*[\'"]([^\'"]*)[\'"]\\s*\\)/';
+    $expressions = [];
     foreach ($lines as $line) {
-        if (preg_match($pattern, $line, $match)) {
-            return $match[1];
+        if (preg_match('/define\\s*\\(\\s*[\'"]([A-Z0-9_]+)[\'"]\\s*,\\s*(.+?)\\s*\\)\\s*;/', $line, $match)) {
+            $expressions[$match[1]] = $match[2];
         }
     }
 
-    return null;
+    return $expressions;
+}
+
+function resolve_config_expression(string $expression, array $expressions, array &$resolved, int $depth = 0): ?string
+{
+    if ($depth > 8) {
+        return null;
+    }
+
+    $expression = trim($expression);
+    if (preg_match('/^[\'"]([^\'"]*)[\'"]$/', $expression, $match)) {
+        return $match[1];
+    }
+
+    $parts = preg_split('/\\s*\\.\\s*/', $expression);
+    if ($parts === false || $parts === []) {
+        return null;
+    }
+
+    $value = '';
+    foreach ($parts as $part) {
+        $part = trim($part);
+        if (preg_match('/^[\'"]([^\'"]*)[\'"]$/', $part, $match)) {
+            $value .= $match[1];
+            continue;
+        }
+        if (!preg_match('/^[A-Z0-9_]+$/', $part)) {
+            return null;
+        }
+        if (!array_key_exists($part, $resolved)) {
+            if (!isset($expressions[$part])) {
+                $resolved[$part] = $part === 'DIR_OPENCART' ? HTML_ROOT : null;
+            } else {
+                $resolved[$part] = resolve_config_expression($expressions[$part], $expressions, $resolved, $depth + 1);
+            }
+        }
+        if ($resolved[$part] === null) {
+            return null;
+        }
+        $value .= $resolved[$part];
+    }
+
+    return $value;
+}
+
+function config_define_value(string $file, string $name): ?string
+{
+    $expressions = config_define_expressions($file);
+    if (!isset($expressions[$name])) {
+        return null;
+    }
+
+    $resolved = [];
+    return resolve_config_expression($expressions[$name], $expressions, $resolved);
 }
 
 function admin_directory(): string
@@ -514,27 +567,33 @@ function admin_directory(): string
             continue;
         }
 
-        $application = config_define_value($config, 'DIR_APPLICATION');
-        if ($application === null || $application === '') {
+        $configFolder = basename(dirname($config));
+        if (!preg_match('/^[A-Za-z0-9._-]+$/', $configFolder)) {
             continue;
         }
 
-        $folder = basename(rtrim($application, '/'));
-        $configFolder = basename(dirname($config));
-        if ($folder !== $configFolder || !preg_match('/^[A-Za-z0-9._-]+$/', $folder)) {
-            continue;
+        $application = config_define_value($config, 'DIR_APPLICATION');
+        if ($application === null || $application === '') {
+            $folder = $configFolder;
+        } else {
+            $folder = basename(rtrim($application, '/'));
+            if ($folder !== $configFolder) {
+                continue;
+            }
         }
         if (in_array($folder, ['catalog', 'system', 'image'], true)) {
             continue;
         }
 
         $realConfigDir = realpath(dirname($config));
-        $realApp = realpath(rtrim($application, '/'));
-        if ($html === false || $realConfigDir === false || $realApp === false) {
+        if ($html === false || $realConfigDir === false || dirname($realConfigDir) !== $html) {
             continue;
         }
-        if ($realConfigDir !== $realApp || dirname($realApp) !== $html) {
-            continue;
+        if ($application !== null && $application !== '') {
+            $realApp = realpath(rtrim($application, '/'));
+            if ($realApp === false || $realConfigDir !== $realApp) {
+                continue;
+            }
         }
 
         $matches[$folder] = $config;
@@ -621,6 +680,34 @@ function config_problem(): string
     return CONFIG_FILE . ' is missing ' . implode(' and ', $missing);
 }
 
+function retarget_upgrade_admin_paths(array $files, string $adminDir): void
+{
+    if ($adminDir === 'admin') {
+        return;
+    }
+    if (!preg_match('/^[A-Za-z0-9._-]+$/', $adminDir)) {
+        fail('Refusing admin directory name: ' . $adminDir);
+    }
+
+    foreach ($files as $file) {
+        $source = file_get_contents($file);
+        if ($source === false) {
+            fail('Could not read ' . $file);
+        }
+        $updated = str_replace(
+            ['admin/config.php', "'/admin/", '"/admin/'],
+            [$adminDir . '/config.php', "'/" . $adminDir . '/', '"/' . $adminDir . '/'],
+            $source
+        );
+        if ($updated === $source) {
+            continue;
+        }
+        if (file_put_contents($file, $updated) === false) {
+            fail('Could not point ' . basename($file) . ' at the admin directory');
+        }
+    }
+}
+
 function run_upgrade_models(array $settings): void
 {
     define_install_paths();
@@ -682,6 +769,13 @@ function run_upgrade_models(array $settings): void
         fail('No OpenCart upgrade models were found');
     }
     sort($files, SORT_STRING);
+
+    $adminDir = admin_directory();
+    fwrite(STDOUT, 'Using admin directory ' . $adminDir . PHP_EOL);
+    if (!is_file(HTML_ROOT . $adminDir . '/config.php')) {
+        fail('Admin config was not found for directory ' . $adminDir);
+    }
+    retarget_upgrade_admin_paths($files, $adminDir);
 
     $snapshots = snapshot_configs();
     try {

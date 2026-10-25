@@ -332,4 +332,8 @@ fi
 
 fix_ownership
 log "INFO" "Starting Apache"
+# Apache treats SIGWINCH as a graceful stop. Docker forwards that signal
+# when the attached terminal is resized, which would exit the container.
+# An ignored signal is kept across exec. Docker stop still uses SIGTERM.
+trap '' WINCH
 exec "$@"

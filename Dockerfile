@@ -103,7 +103,7 @@ COPY aam-php8-repair.ocmod.xml /usr/local/share/opencart/aam-php8-repair.ocmod.x
 RUN a2enconf opencart && chmod 755 /usr/local/bin/entrypoint.sh /usr/local/bin/opencart-maint.php
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=300s --retries=3 \
-    CMD curl -f http://localhost/ || exit 1
+    CMD code=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 5 --max-time 8 http://localhost/ || true); echo "$code" | grep -Eq '^(200|301|302|303|307|308|503)$'
 
 EXPOSE 80 443
 

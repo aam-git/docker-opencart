@@ -2,7 +2,7 @@
 <modification>
   <name>AAM PHP 8 Repair</name>
   <code>AAM-php8-repair</code>
-  <version>1.4</version>
+  <version>1.5</version>
   <author>AAM Services</author>
   <link>https://aamservices.uk</link>
 
@@ -148,9 +148,21 @@ $0]]></add>
   <file path="system/library/mail/phpmail.php">
     <operation error="skip">
       <ignoreif><![CDATA[AllowDynamicProperties]]></ignoreif>
-      <search regex="true"><![CDATA[/^[ \t]*class Phpmail\b/mi]]></search>
-      <add><![CDATA[#[\AllowDynamicProperties]
-$0]]></add>
+      <search><![CDATA[class Phpmail {]]></search>
+      <add position="before"><![CDATA[#[\AllowDynamicProperties]]]></add>
+    </operation>
+    <operation error="skip">
+      <ignoreif><![CDATA[public $adaptor;]]></ignoreif>
+      <search><![CDATA[class Phpmail {]]></search>
+      <add position="after"><![CDATA[	public $to;
+	public $from;
+	public $sender;
+	public $reply_to;
+	public $subject;
+	public $text;
+	public $html;
+	public $attachments = array();
+	public $adaptor;]]></add>
     </operation>
   </file>
 </modification>

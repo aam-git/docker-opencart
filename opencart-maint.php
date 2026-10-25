@@ -201,51 +201,6 @@ function write_marker(mysqli $link, string $prefix): void
     }
 }
 
-function quiet_incompatible_extensions(): void
-{
-    $settings = connection_settings();
-    if ($settings['database'] === '') {
-        fail('Database name is missing from config.php');
-    }
-    try {
-        $link = connect($settings, true);
-    } catch (Throwable $exception) {
-        fail('Database connection failed: ' . $exception->getMessage());
-    }
-
-    $prefix = $settings['prefix'];
-    $table = '`' . $prefix . 'setting`';
-    $quietKey = 'config_docker_opencart_extensions_quieted';
-    $escapedQuiet = $link->real_escape_string($quietKey);
-    $already = $link->query("SELECT `value` FROM {$table} WHERE `key` = '{$escapedQuiet}' AND `code` = 'config' LIMIT 1");
-    if ($already instanceof mysqli_result && $already->num_rows > 0) {
-        $link->close();
-        return;
-    }
-
-    $like = "analytics\\_%\\_status";
-    $keep = 'analytics_google_analytics_status';
-    $found = $link->query(
-        "SELECT `key` FROM {$table} WHERE `key` LIKE '{$like}' AND `key` != '{$keep}' AND `value` != '0'"
-    );
-    if ($found instanceof mysqli_result) {
-        while ($row = $found->fetch_assoc()) {
-            fwrite(STDOUT, 'Switched off ' . $row['key'] . PHP_EOL);
-        }
-    }
-    if (!$link->query(
-        "UPDATE {$table} SET `value` = '0' WHERE `key` LIKE '{$like}' AND `key` != '{$keep}' AND `value` != '0'"
-    )) {
-        fail('Could not switch off third-party analytics extensions: ' . $link->error);
-    }
-
-    $insert = "INSERT INTO {$table} SET `store_id` = '0', `code` = 'config', `key` = '{$escapedQuiet}', `value` = '1', `serialized` = '0'";
-    if (!$link->query($insert)) {
-        fail('Could not record the extension check: ' . $link->error);
-    }
-    $link->close();
-}
-
 function modification_snapshot_file(): string
 {
     return storage_path() . '.docker-enabled-modifications';
@@ -1051,10 +1006,9 @@ switch ($command) {
         exit(0);
     case 'current':
         exit(marker_is_current() ? 0 : 1);
-    case 'quiet-extensions':
-        quiet_incompatible_extensions();
+    case 'resume-modifications':
         resume_modifications();
         exit(0);
     default:
-        fail('Usage: opencart-maint.php configured|config-problem|export|tables|ping|storage-path|admin-directory|version|upgrade-if-needed|mark|apply-store|current|quiet-extensions');
+        fail('Usage: opencart-maint.php configured|config-problem|export|tables|ping|storage-path|admin-directory|version|upgrade-if-needed|mark|apply-store|current|resume-modifications');
 }

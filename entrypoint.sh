@@ -278,7 +278,7 @@ finish_existing_store() {
     if [ -f "${HTML}/.docker-pending-store-settings" ]; then
         apply_store_identity
     fi
-    php "$MAINT" quiet-extensions
+    php "$MAINT" resume-modifications
     rm -rf "${HTML}/install"
     rm -f "$SOURCE_VERSION_FILE"
     chmod 644 "${HTML}/config.php" "${HTML}/${ADMIN_DIR}/config.php" 2>/dev/null || true

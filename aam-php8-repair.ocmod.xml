@@ -2,7 +2,7 @@
 <modification>
   <name>AAM PHP 8 Repair</name>
   <code>AAM-php8-repair</code>
-  <version>1.3</version>
+  <version>1.4</version>
   <author>AAM Services</author>
   <link>https://aamservices.uk</link>
 
@@ -110,6 +110,47 @@
     <operation error="skip">
       <search regex="true"><![CDATA[/(stri?pos)\(\s*((?:\$this->request->server|\$_SERVER)\[('|")HTTP_ACCEPT\3\])\s*,/]]></search>
       <add><![CDATA[$1($2 ?? '',]]></add>
+    </operation>
+  </file>
+
+  <file path="system/library/me_pdf_invoice/tcpdf/tcpdf.php">
+    <operation error="skip">
+      <ignoreif><![CDATA[AllowDynamicProperties]]></ignoreif>
+      <search regex="true"><![CDATA[/^[ \t]*class TCPDF\b/m]]></search>
+      <add><![CDATA[#[\AllowDynamicProperties]
+$0]]></add>
+    </operation>
+    <operation error="skip">
+      <ignoreif><![CDATA[CurrentFont['cw'][intval($char)]]]></ignoreif>
+      <search regex="true"><![CDATA[/\$this->CurrentFont\['cw'\]\[\$char\]/]]></search>
+      <add><![CDATA[$this->CurrentFont['cw'][intval($char)]]]></add>
+    </operation>
+  </file>
+
+  <file path="system/library/me_pdf_invoice/tcpdf/include/tcpdf_static.php">
+    <operation error="skip">
+      <ignoreif><![CDATA[$limit === null ? -1 : $limit;]]></ignoreif>
+      <search regex="true"><![CDATA[/public static function pregSplit\(\$pattern,\s*\$modifiers,\s*\$subject,\s*\$limit\s*=\s*NULL,\s*\$flags\s*=\s*NULL\)\s*\{/]]></search>
+      <add><![CDATA[$0
+		$limit = $limit === null ? -1 : $limit;
+		$flags = $flags === null ? 0 : $flags;]]></add>
+    </operation>
+  </file>
+
+  <file path="system/library/me_pdf_invoice/tcpdf/include/tcpdf_fonts.php">
+    <operation error="skip">
+      <ignoreif><![CDATA[&$currentfont = null)]]></ignoreif>
+      <search regex="true"><![CDATA[/&\$currentfont\s*\)/]]></search>
+      <add><![CDATA[&$currentfont = null)]]></add>
+    </operation>
+  </file>
+
+  <file path="system/library/mail/phpmail.php">
+    <operation error="skip">
+      <ignoreif><![CDATA[AllowDynamicProperties]]></ignoreif>
+      <search regex="true"><![CDATA[/^[ \t]*class Phpmail\b/mi]]></search>
+      <add><![CDATA[#[\AllowDynamicProperties]
+$0]]></add>
     </operation>
   </file>
 </modification>

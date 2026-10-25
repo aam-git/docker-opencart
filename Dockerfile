@@ -54,6 +54,7 @@ ENV OPENCART_URL=https://github.com/opencart/opencart/releases/download/${OPENCA
 
 # Keep a pristine tree outside /var/www. A volume mounted at /var/www hides
 # the files baked into the image, so upgrades are copied from /usr/src/opencart.
+COPY patch-modification-opcache.php /tmp/patch-modification-opcache.php
 RUN set -eux; \
     curl -fsSL --retry 3 --retry-delay 5 -o "/tmp/${OPENCART_FILE}" "${OPENCART_URL}"; \
     echo "${OPENCART_MD5}  /tmp/${OPENCART_FILE}" | md5sum -c; \
@@ -76,7 +77,8 @@ RUN set -eux; \
     # Deprecations must not reach the error handler. Logging each one makes admin slow.
     php -r '$$path="/usr/src/opencart/system/startup.php"; $$source=file_get_contents($$path); $$needle="error_reporting(E_ALL);"; $$replace="error_reporting(E_ALL & ~E_DEPRECATED & ~E_USER_DEPRECATED);"; if ($$source===false || substr_count($$source, $$needle)!==1) { fwrite(STDERR, "startup.php error_reporting anchor was not found\n"); exit(1);} if (file_put_contents($$path, str_replace($$needle, $$replace, $$source))===false) { fwrite(STDERR, "startup.php could not be updated\n"); exit(1);}'; \
     # Drop OPcache after a modification refresh or clear so the new files are used on the next request.
-    php -r '$$path="/usr/src/opencart/admin/controller/marketplace/modification.php"; $$source=file_get_contents($$path); if ($$source===false) { fwrite(STDERR, "modification.php was not found\n"); exit(1);} $$q=chr(39); $$refresh="editSettingValue(".$$q."config".$$q.", ".$$q."config_maintenance".$$q.", \x24maintenance);"; $$reset="\n\t\t\tif (function_exists(".$$q."opcache_reset".$$q.")) {\n\t\t\t\topcache_reset();\n\t\t\t}"; if (substr_count($$source, $$refresh)!==1) { fwrite(STDERR, "modification refresh anchor was not found\n"); exit(1);} $$source=str_replace($$refresh, $$refresh.$$reset, $$source); $$clear="rmdir(\x24file);\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\n\t\t\t\x24this->session->data[".$$q."success".$$q."] = \x24this->language->get(".$$q."text_success".$$q.");"; if (substr_count($$source, $$clear)!==1) { fwrite(STDERR, "modification clear anchor was not found\n"); exit(1);} $$source=str_replace($$clear, "rmdir(\x24file);\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\n\t\t\tif (function_exists(".$$q."opcache_reset".$$q.")) {\n\t\t\t\topcache_reset();\n\t\t\t}\n\n\t\t\t\x24this->session->data[".$$q."success".$$q."] = \x24this->language->get(".$$q."text_success".$$q.");", $$source); if (file_put_contents($$path, $$source)===false) { fwrite(STDERR, "modification.php could not be updated\n"); exit(1);}'; \
+    php /tmp/patch-modification-opcache.php; \
+    rm -f /tmp/patch-modification-opcache.php; \
     cp -a /usr/src/opencart/. /var/www/html/; \
     if [ -s /var/www/html/config-dist.php ]; then \
         cp /var/www/html/config-dist.php /var/www/html/config.php; \

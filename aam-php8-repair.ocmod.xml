@@ -2,7 +2,7 @@
 <modification>
   <name>AAM PHP 8 Repair</name>
   <code>AAM-php8-repair</code>
-  <version>1.1</version>
+  <version>1.3</version>
   <author>AAM Services</author>
   <link>https://aamservices.uk</link>
 
@@ -21,10 +21,14 @@
     </operation>
   </file>
 
-  <file path="{admin,catalog}/{controller,model}/*/*.php">
+  <file path="admin/{controller,model}/*/*.php|catalog/{controller,model}/*/*.php">
     <operation error="skip">
       <search regex="true"><![CDATA[/strtotime\(\s*(\$[A-Za-z_][A-Za-z0-9_]*(?:\[['"'][^'"]+['"]\])?)\s*\)/]]></search>
       <add><![CDATA[strtotime((string)$1)]]></add>
+    </operation>
+    <operation error="skip">
+      <search regex="true"><![CDATA[/(stri?pos)\(\s*((?:\$this->request->server|\$_SERVER)\[('|")HTTP_ACCEPT\3\])\s*,/]]></search>
+      <add><![CDATA[$1($2 ?? '',]]></add>
     </operation>
   </file>
 
@@ -49,6 +53,10 @@
       <search regex="true"><![CDATA[/strtotime\(\s*(\$[A-Za-z_][A-Za-z0-9_]*(?:\[['"'][^'"]+['"]\])?)\s*\)/]]></search>
       <add><![CDATA[strtotime((string)$1)]]></add>
     </operation>
+    <operation error="skip">
+      <search regex="true"><![CDATA[/(stri?pos)\(\s*((?:\$this->request->server|\$_SERVER)\[('|")HTTP_ACCEPT\3\])\s*,/]]></search>
+      <add><![CDATA[$1($2 ?? '',]]></add>
+    </operation>
   </file>
 
   <file path="admin/{controller,model}/extension/{shipping,payment,module,total}/*.php">
@@ -72,6 +80,10 @@
       <search regex="true"><![CDATA[/strtotime\(\s*(\$[A-Za-z_][A-Za-z0-9_]*(?:\[['"'][^'"]+['"]\])?)\s*\)/]]></search>
       <add><![CDATA[strtotime((string)$1)]]></add>
     </operation>
+    <operation error="skip">
+      <search regex="true"><![CDATA[/(stri?pos)\(\s*((?:\$this->request->server|\$_SERVER)\[('|")HTTP_ACCEPT\3\])\s*,/]]></search>
+      <add><![CDATA[$1($2 ?? '',]]></add>
+    </operation>
   </file>
 
   <file path="system/library/ocm/{*.php,lib/*.php,elements/*.php,traits/front/*.php,traits/back/*/*.php}">
@@ -94,6 +106,10 @@
     <operation error="skip">
       <search regex="true"><![CDATA[/strtotime\(\s*(\$[A-Za-z_][A-Za-z0-9_]*(?:\[['"'][^'"]+['"]\])?)\s*\)/]]></search>
       <add><![CDATA[strtotime((string)$1)]]></add>
+    </operation>
+    <operation error="skip">
+      <search regex="true"><![CDATA[/(stri?pos)\(\s*((?:\$this->request->server|\$_SERVER)\[('|")HTTP_ACCEPT\3\])\s*,/]]></search>
+      <add><![CDATA[$1($2 ?? '',]]></add>
     </operation>
   </file>
 </modification>

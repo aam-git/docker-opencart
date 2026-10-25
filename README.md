@@ -337,11 +337,6 @@ OpenCart 4 is a different image. This branch does not install it.
 - Check that `DB_HOSTNAME` is the compose service name. On the sample file that name is `mysql`
 - Check `DB_PORT` if the database is not on 3306
 
-**The proxy returns 404 while the container is starting or unhealthy**
-
-- The healthcheck requests the homepage. A refused connection or a timeout fails the check, so the proxy has no backend and returns 404
-- A 200, a redirect, or a 503 counts as healthy. A 503 from `/` is the OpenCart maintenance page
-- Switch maintenance off under System, Settings, Server
 
 **The upgrade stopped and the shop did not come up**
 

@@ -65,8 +65,9 @@ On the first start the container:
 4. Upgrades the database schema once. Upgrade models that edit config files are pointed at the admin directory found by scanning those configs. If a model rewrites `config.php` or the admin `config.php`, those files are put back as they were.
 5. Clears `cache/` and `modification/`, then removes `install/` when the upgrade succeeds.
 6. Modifications that are enabled are recorded, switched off for the schema upgrade, and switched back on afterwards, including when the upgrade fails. Deprecation notices are written to the container log and the storage error log, and are not printed in the page.
+7. Adds the PHP 8 repair modification when its code is not already present.
 
-Take your own backup of the database before that first start. The dump in storage is only attempted as a second copy, and a shop whose database client cannot complete it still upgrades. After the shop is up, open Extensions, then Modifications, and refresh so your extensions are compiled again.
+Take your own backup of the database before that first start. The dump in storage is only attempted as a second copy, and a shop whose database client cannot complete it still upgrades. After the shop is up, open Extensions, then Modifications, and refresh so the repair and your other extensions are compiled.
 
 `DB_*` and `OPENCART_*` variables left over from a 3.0.4.1 compose file are ignored once `config.php` is filled, so the installer does not run again and does not replace the public site URL.
 

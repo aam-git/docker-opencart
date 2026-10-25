@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<modification>
+  <name>AAM PHP 8 Repair</name>
+  <code>AAM-php8-repair</code>
+  <version>1.0</version>
+  <author>AAM Services</author>
+  <link>https://aamservices.uk</link>
+
+  <file path="system/library/cart/cart.php">
+    <operation error="skip">
+      <ignoreif><![CDATA[private $load;]]></ignoreif>
+      <search><![CDATA[private $weight;]]></search>
+      <add position="after"><![CDATA[	private $load;
+	private $language;]]></add>
+    </operation>
+    <operation error="skip">
+      <ignoreif><![CDATA[private $load;]]></ignoreif>
+      <search><![CDATA[private $data = array();]]></search>
+      <add position="after"><![CDATA[	private $load;
+	private $language;]]></add>
+    </operation>
+  </file>
+
+  <file path="catalog/{controller,model}/extension/{shipping,payment,module,total}/*.php">
+    <operation error="skip">
+      <search regex="true"><![CDATA[/\(boolean\)/i]]></search>
+      <add><![CDATA[(bool)]]></add>
+    </operation>
+    <operation error="skip">
+      <search regex="true"><![CDATA[/\(integer\)/i]]></search>
+      <add><![CDATA[(int)]]></add>
+    </operation>
+    <operation error="skip">
+      <search regex="true"><![CDATA[/\(double\)/i]]></search>
+      <add><![CDATA[(float)]]></add>
+    </operation>
+    <operation error="skip">
+      <search regex="true"><![CDATA[/\(real\)/i]]></search>
+      <add><![CDATA[(float)]]></add>
+    </operation>
+  </file>
+
+  <file path="admin/{controller,model}/extension/{shipping,payment,module,total}/*.php">
+    <operation error="skip">
+      <search regex="true"><![CDATA[/\(boolean\)/i]]></search>
+      <add><![CDATA[(bool)]]></add>
+    </operation>
+    <operation error="skip">
+      <search regex="true"><![CDATA[/\(integer\)/i]]></search>
+      <add><![CDATA[(int)]]></add>
+    </operation>
+    <operation error="skip">
+      <search regex="true"><![CDATA[/\(double\)/i]]></search>
+      <add><![CDATA[(float)]]></add>
+    </operation>
+    <operation error="skip">
+      <search regex="true"><![CDATA[/\(real\)/i]]></search>
+      <add><![CDATA[(float)]]></add>
+    </operation>
+  </file>
+
+  <file path="system/library/ocm/{*.php,lib/*.php,elements/*.php,traits/front/*.php,traits/back/*/*.php}">
+    <operation error="skip">
+      <search regex="true"><![CDATA[/\(boolean\)/i]]></search>
+      <add><![CDATA[(bool)]]></add>
+    </operation>
+    <operation error="skip">
+      <search regex="true"><![CDATA[/\(integer\)/i]]></search>
+      <add><![CDATA[(int)]]></add>
+    </operation>
+    <operation error="skip">
+      <search regex="true"><![CDATA[/\(double\)/i]]></search>
+      <add><![CDATA[(float)]]></add>
+    </operation>
+    <operation error="skip">
+      <search regex="true"><![CDATA[/\(real\)/i]]></search>
+      <add><![CDATA[(float)]]></add>
+    </operation>
+  </file>
+</modification>

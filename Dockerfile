@@ -98,6 +98,7 @@ RUN set -eux; \
 COPY opencart-apache.conf /etc/apache2/conf-available/opencart.conf
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY opencart-maint.php /usr/local/bin/opencart-maint.php
+COPY aam-php8-repair.ocmod.xml /usr/local/share/opencart/aam-php8-repair.ocmod.xml
 
 RUN a2enconf opencart && chmod 755 /usr/local/bin/entrypoint.sh /usr/local/bin/opencart-maint.php
 

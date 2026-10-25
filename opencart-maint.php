@@ -11,6 +11,8 @@ const OPENCART_VERSION = '3.0.5.1';
 const HTML_ROOT = '/var/www/html/';
 const CONFIG_FILE = HTML_ROOT . 'config.php';
 const MARKER_KEY = 'config_docker_opencart_version';
+const PHP8_REPAIR_CODE = 'AAM-php8-repair';
+const PHP8_REPAIR_XML = '/usr/local/share/opencart/aam-php8-repair.ocmod.xml';
 
 function fail(string $message, int $code = 1): void
 {
@@ -959,6 +961,64 @@ function installed_version(): string
     return '';
 }
 
+function ensure_php8_repair_modification(): void
+{
+    $settings = connection_settings();
+    if ($settings['database'] === '') {
+        fail('Database name is missing from config.php');
+    }
+    if (!is_file(PHP8_REPAIR_XML)) {
+        fail('PHP 8 repair OCMod file is missing');
+    }
+    $xml = file_get_contents(PHP8_REPAIR_XML);
+    if ($xml === false || trim($xml) === '') {
+        fail('PHP 8 repair OCMod file is empty');
+    }
+    $document = simplexml_load_string($xml);
+    if ($document === false || (string) $document->code !== PHP8_REPAIR_CODE) {
+        fail('PHP 8 repair OCMod file is not valid');
+    }
+
+    try {
+        $link = connect($settings, true);
+    } catch (Throwable $exception) {
+        fail('Database connection failed: ' . $exception->getMessage());
+    }
+
+    $prefix = $settings['prefix'];
+    $table = '`' . $prefix . 'modification`';
+    $exists = $link->query("SHOW TABLES LIKE '" . $link->real_escape_string($prefix . 'modification') . "'");
+    if (!$exists instanceof mysqli_result || $exists->num_rows < 1) {
+        warn('Modification table is missing. The PHP 8 repair OCMod was not added.');
+        $link->close();
+        return;
+    }
+
+    $code = $link->real_escape_string(PHP8_REPAIR_CODE);
+    $found = $link->query("SELECT `modification_id` FROM {$table} WHERE `code` = '{$code}' LIMIT 1");
+    if (!$found instanceof mysqli_result) {
+        fail('Could not read modification records: ' . $link->error);
+    }
+    if ($found->num_rows > 0) {
+        fwrite(STDOUT, 'PHP 8 repair modification is already installed' . PHP_EOL);
+        $link->close();
+        return;
+    }
+
+    $name = $link->real_escape_string((string) $document->name);
+    $author = $link->real_escape_string((string) $document->author);
+    $version = $link->real_escape_string((string) $document->version);
+    $repairLink = $link->real_escape_string((string) $document->link);
+    $escapedXml = $link->real_escape_string($xml);
+    $added = gmdate('Y-m-d H:i:s');
+    $insert = "INSERT INTO {$table} SET `extension_install_id` = '0', `name` = '{$name}', `code` = '{$code}', `author` = '{$author}', `version` = '{$version}', `link` = '{$repairLink}', `xml` = '{$escapedXml}', `status` = '1', `date_added` = '{$added}'";
+    if (!$link->query($insert)) {
+        fail('Could not add the PHP 8 repair modification: ' . $link->error);
+    }
+    fwrite(STDOUT, 'Added PHP 8 repair modification' . PHP_EOL);
+    $link->close();
+}
+
 $command = $argv[1] ?? '';
 
 switch ($command) {
@@ -1009,6 +1069,9 @@ switch ($command) {
     case 'resume-modifications':
         resume_modifications();
         exit(0);
+    case 'ensure-php8-repair':
+        ensure_php8_repair_modification();
+        exit(0);
     default:
-        fail('Usage: opencart-maint.php configured|config-problem|export|tables|ping|storage-path|admin-directory|version|upgrade-if-needed|mark|apply-store|current|resume-modifications');
+        fail('Usage: opencart-maint.php configured|config-problem|export|tables|ping|storage-path|admin-directory|version|upgrade-if-needed|mark|apply-store|current|resume-modifications|ensure-php8-repair');
 }

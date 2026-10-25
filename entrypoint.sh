@@ -245,6 +245,10 @@ run_cli_install() {
     chmod 644 "${HTML}/config.php" "${HTML}/admin/config.php"
     apply_store_identity
     php "$MAINT" mark
+    if ! php "$MAINT" ensure-php8-repair; then
+        log "ERROR" "Could not add the PHP 8 repair modification."
+        exit 1
+    fi
     rm -rf "${HTML}/install"
     rm -f "$SOURCE_VERSION_FILE"
     log "INFO" "OpenCart CLI installation completed"
@@ -279,6 +283,10 @@ finish_existing_store() {
         apply_store_identity
     fi
     php "$MAINT" resume-modifications
+    if ! php "$MAINT" ensure-php8-repair; then
+        log "ERROR" "Could not add the PHP 8 repair modification."
+        exit 1
+    fi
     rm -rf "${HTML}/install"
     rm -f "$SOURCE_VERSION_FILE"
     chmod 644 "${HTML}/config.php" "${HTML}/${ADMIN_DIR}/config.php" 2>/dev/null || true

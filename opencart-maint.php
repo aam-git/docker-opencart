@@ -1022,7 +1022,12 @@ function ensure_php8_repair_modification(): void
     }
 
     $added = gmdate('Y-m-d H:i:s');
-    $insert = "INSERT INTO {$table} SET `extension_install_id` = '0', `name` = '{$name}', `code` = '{$code}', `author` = '{$author}', `version` = '{$version}', `link` = '{$repairLink}', `xml` = '{$escapedXml}', `status` = '1', `date_added` = '{$added}'";
+    $modified = '';
+    $column = $link->query("SHOW COLUMNS FROM {$table} LIKE 'date_modified'");
+    if ($column instanceof mysqli_result && $column->num_rows > 0) {
+        $modified = ", `date_modified` = '{$added}'";
+    }
+    $insert = "INSERT INTO {$table} SET `extension_install_id` = '0', `name` = '{$name}', `code` = '{$code}', `author` = '{$author}', `version` = '{$version}', `link` = '{$repairLink}', `xml` = '{$escapedXml}', `status` = '1', `date_added` = '{$added}'{$modified}";
     if (!$link->query($insert)) {
         fail('Could not add the PHP 8 repair modification: ' . $link->error);
     }

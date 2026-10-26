@@ -2,7 +2,7 @@
 <modification>
   <name>AAM PHP 8 Repair</name>
   <code>AAM-php8-repair</code>
-  <version>1.6</version>
+  <version>1.7</version>
   <author>AAM Services</author>
   <link>https://aamservices.uk</link>
 
@@ -160,6 +160,52 @@ $0]]></add>
       <ignoreif><![CDATA[&$currentfont = null)]]></ignoreif>
       <search regex="true"><![CDATA[/&\$currentfont\s*\)/]]></search>
       <add><![CDATA[&$currentfont = null)]]></add>
+    </operation>
+  </file>
+
+  <file path="system/library/cache/file.php">
+    <operation error="skip">
+      <ignoreif><![CDATA[$handle = @fopen($files[0], 'r');]]></ignoreif>
+      <search regex="true"><![CDATA[/if \(\$files\) \{\s*\$handle = fopen\(\$files\[0\], 'r'\);\s*flock\(\$handle, LOCK_SH\);\s*\$data = fread\(\$handle, filesize\(\$files\[0\]\)\);\s*flock\(\$handle, LOCK_UN\);\s*fclose\(\$handle\);\s*return json_decode\(\$data, true\);\s*\}/]]></search>
+      <add><![CDATA[if ($files && is_file($files[0])) {
+			$handle = @fopen($files[0], 'r');
+
+			if ($handle) {
+				flock($handle, LOCK_SH);
+
+				$size = @filesize($files[0]);
+
+				if ($size) {
+					$data = fread($handle, $size);
+
+					flock($handle, LOCK_UN);
+
+					fclose($handle);
+
+					return json_decode($data, true);
+				}
+
+				flock($handle, LOCK_UN);
+
+				fclose($handle);
+			}
+		}]]></add>
+    </operation>
+  </file>
+
+  <file path="catalog/controller/extension/payment/stripe.php">
+    <operation error="skip">
+      <ignoreif><![CDATA[if (empty($this->session->data['order_id']))]]></ignoreif>
+      <search regex="true" limit="1"><![CDATA[/\$order_info = \$this->model_checkout_order->getOrder\(\$this->session->data\['order_id'\]\);/]]></search>
+      <add><![CDATA[if (empty($this->session->data['order_id'])) {
+            return '';
+        }
+
+        $order_info = $this->model_checkout_order->getOrder($this->session->data['order_id']);
+
+        if (!$order_info) {
+            return '';
+        }]]></add>
     </operation>
   </file>
 

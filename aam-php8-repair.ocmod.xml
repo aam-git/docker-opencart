@@ -2,7 +2,7 @@
 <modification>
   <name>AAM PHP 8 Repair</name>
   <code>AAM-php8-repair</code>
-  <version>1.7</version>
+  <version>1.12</version>
   <author>AAM Services</author>
   <link>https://aamservices.uk</link>
 
@@ -32,6 +32,16 @@
     </operation>
   </file>
 
+  <file path="catalog/model/tool/image.php">
+    <operation error="skip">
+      <ignoreif><![CDATA[if (!isset($_SERVER['HTTP_ACCEPT']))]]></ignoreif>
+      <search><![CDATA[public function resize($filename, $width, $height) {]]></search>
+      <add position="after"><![CDATA[		if (!isset($_SERVER['HTTP_ACCEPT'])) {
+			$_SERVER['HTTP_ACCEPT'] = '';
+		}]]></add>
+    </operation>
+  </file>
+
   <file path="catalog/{controller,model}/extension/{shipping,payment,module,total}/*.php">
     <operation error="skip">
       <search regex="true"><![CDATA[/\(boolean\)/i]]></search>
@@ -56,6 +66,11 @@
     <operation error="skip">
       <search regex="true"><![CDATA[/(stri?pos)\(\s*((?:\$this->request->server|\$_SERVER)\[('|")HTTP_ACCEPT\3\])\s*,/]]></search>
       <add><![CDATA[$1($2 ?? '',]]></add>
+    </operation>
+    <operation error="skip">
+      <ignoreif><![CDATA[$base[mt_rand(0, $max)]]]></ignoreif>
+      <search regex="true"><![CDATA[/(\$[A-Za-z_][A-Za-z0-9_]*)\{([^{}]+)\}/]]></search>
+      <add><![CDATA[${1}[${2}]]]></add>
     </operation>
   </file>
 
@@ -83,6 +98,11 @@
     <operation error="skip">
       <search regex="true"><![CDATA[/(stri?pos)\(\s*((?:\$this->request->server|\$_SERVER)\[('|")HTTP_ACCEPT\3\])\s*,/]]></search>
       <add><![CDATA[$1($2 ?? '',]]></add>
+    </operation>
+    <operation error="skip">
+      <ignoreif><![CDATA[$base[mt_rand(0, $max)]]]></ignoreif>
+      <search regex="true"><![CDATA[/(\$[A-Za-z_][A-Za-z0-9_]*)\{([^{}]+)\}/]]></search>
+      <add><![CDATA[${1}[${2}]]]></add>
     </operation>
   </file>
 
@@ -209,6 +229,24 @@ $0]]></add>
     </operation>
   </file>
 
+  <file path="catalog/controller/common/cart.php">
+    <operation error="skip">
+      <ignoreif><![CDATA[$data['ecom_totalvalue'] = 0;]]></ignoreif>
+      <search><![CDATA[$data['products'] = array();]]></search>
+      <add position="after"><![CDATA[		$data['ecom_prodid'] = array();
+		$data['ecom_pagetype'] = 'cart';
+		$data['ecom_totalvalue'] = 0;]]></add>
+    </operation>
+  </file>
+
+  <file path="catalog/controller/api/product.php">
+    <operation error="skip">
+      <ignoreif><![CDATA[['model'] ?? null]]></ignoreif>
+      <search regex="true"><![CDATA[/(?<!isset\()(?<!empty\()(\$(?:this->request->(?:post|get|request)|_[A-Z]+|[A-Za-z_][A-Za-z0-9_]*)(?:(?:->|::)\$?[A-Za-z_][A-Za-z0-9_]*)*(?:\[(?!['"]model['"])[^\]]+\])*)\[(['"])model\2\](?!\s*(?:=|\?\?))/]]></search>
+      <add><![CDATA[($0 ?? null)]]></add>
+    </operation>
+  </file>
+
   <file path="system/library/mail/phpmail.php">
     <operation error="skip">
       <ignoreif><![CDATA[AllowDynamicProperties]]></ignoreif>
@@ -227,6 +265,63 @@ $0]]></add>
 	public $html;
 	public $attachments = array();
 	public $adaptor;]]></add>
+    </operation>
+  </file>
+
+  <file path="system/engine/loader.php">
+    <operation error="skip">
+      <ignoreif><![CDATA[include_once($route === 'stripe' ? modification($file) : $file);]]></ignoreif>
+      <search regex="true"><![CDATA[~(\$class = str_replace\('/',\s*'\\\\',\s*\$route\);\s*if \(is_file\(\$file\)\) \{\s*)include_once\(\$file\);~]]></search>
+      <add><![CDATA[$1include_once($route === 'stripe' ? modification($file) : $file);]]></add>
+    </operation>
+  </file>
+
+  <file path="system/library/stripe.php">
+    <operation error="skip">
+      <ignoreif><![CDATA[modification(DIR_SYSTEM . 'library/stripe/init.php')]]></ignoreif>
+      <search><![CDATA[require(DIR_SYSTEM . 'library/stripe/init.php');]]></search>
+      <add position="replace"><![CDATA[require(modification(DIR_SYSTEM . 'library/stripe/init.php'));]]></add>
+    </operation>
+  </file>
+
+  <file path="system/library/stripe/init.php">
+    <operation error="skip">
+      <ignoreif><![CDATA[modification(DIR_SYSTEM . 'library/stripe/lib/]]></ignoreif>
+      <search regex="true"><![CDATA[/require\(dirname\(__FILE__\)\s*\.\s*'(\/[^']+)'\);/]]></search>
+      <add><![CDATA[require(modification(DIR_SYSTEM . 'library/stripe$1'));]]></add>
+    </operation>
+  </file>
+
+  <file path="system/library/stripe/lib/Util/AutoPagingIterator.php|system/library/stripe/lib/Util/CaseInsensitiveArray.php|system/library/stripe/lib/Util/Set.php|system/library/stripe/lib/StripeObject.php|system/library/stripe/lib/Collection.php">
+    <operation error="skip">
+      <ignoreif><![CDATA[ReturnTypeWillChange]]></ignoreif>
+      <search regex="true"><![CDATA[/(^[\t ]*)(public function (?:rewind|current|next|key|valid|offsetExists|offsetGet|offsetSet|offsetUnset|getIterator|count|jsonSerialize)\s*\([^)]*\)\s*\{)/m]]></search>
+      <add><![CDATA[$1#[\ReturnTypeWillChange]
+$1$2]]></add>
+    </operation>
+  </file>
+
+  <file path="system/library/stripe/lib/ApiRequestor.php">
+    <operation error="skip">
+      <ignoreif><![CDATA[isset($rheaders['request-id'])]]></ignoreif>
+      <search><![CDATA[if (array_key_exists('request-id', $rheaders)) {]]></search>
+      <add position="replace"><![CDATA[if (isset($rheaders['request-id'])) {]]></add>
+    </operation>
+  </file>
+
+  <file path="system/library/stripe/lib/ApiResource.php|system/library/stripe/lib/SingletonApiResource.php">
+    <operation error="skip">
+      <ignoreif><![CDATA[{$base}]]></ignoreif>
+      <search regex="true"><![CDATA[/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/]]></search>
+      <add><![CDATA[{\$$1}]]></add>
+    </operation>
+  </file>
+
+  <file path="system/library/stripe/lib/HttpClient/CurlClient.php">
+    <operation error="skip">
+      <ignoreif><![CDATA[protected $randomGenerator;]]></ignoreif>
+      <search><![CDATA[protected $defaultOptions;]]></search>
+      <add position="after"><![CDATA[    protected $randomGenerator;]]></add>
     </operation>
   </file>
 </modification>

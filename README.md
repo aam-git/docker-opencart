@@ -65,7 +65,7 @@ On the first start the container:
 4. Upgrades the database schema once. Config files are restored if an upgrade model changes them.
 5. Clears `cache/` and `modification/`, then removes `install/` when the upgrade succeeds.
 6. Modifications that are enabled are recorded, switched off for the schema upgrade, and switched back on afterwards.
-7. Adds the PHP 8 repair modification when its code is not already present, and updates it when the image has a newer version.
+7. Adds the PHP 8 repair modification when its code is not already present, and updates it when the image has a newer version. An older image leaves a newer installed repair in place.
 
 Take your own backup of the database before that first start. After the shop is up, open Extensions, then Modifications, and refresh so the repair and your other extensions are compiled.
 

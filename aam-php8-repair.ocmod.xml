@@ -2,7 +2,7 @@
 <modification>
   <name>AAM PHP 8 Repair</name>
   <code>AAM-php8-repair</code>
-  <version>1.12</version>
+  <version>1.22</version>
   <author>AAM Services</author>
   <link>https://aamservices.uk</link>
 
@@ -29,6 +29,97 @@
     <operation error="skip">
       <search regex="true"><![CDATA[/(stri?pos)\(\s*((?:\$this->request->server|\$_SERVER)\[('|")HTTP_ACCEPT\3\])\s*,/]]></search>
       <add><![CDATA[$1($2 ?? '',]]></add>
+    </operation>
+  </file>
+
+  <file path="catalog/controller/api/storeconnect.php">
+    <operation error="skip">
+      <ignoreif><![CDATA[if (!is_array($remote_data)) { $remote_data = array(); }]]></ignoreif>
+      <search><![CDATA[$remote_data = json_decode($this->StockAndPrice(), true);]]></search>
+      <add position="after"><![CDATA[            if (!is_array($remote_data)) { $remote_data = array(); }]]></add>
+    </operation>
+    <operation error="skip">
+      <ignoreif><![CDATA[$remote = (isset($remote_data[$product['m']]) && is_array($remote_data[$product['m']])) ? $remote_data[$product['m']] : null;]]></ignoreif>
+      <search><![CDATA[if (!isset($remote_data[$product['m']])) {]]></search>
+      <add position="replace"><![CDATA[$remote = (isset($remote_data[$product['m']]) && is_array($remote_data[$product['m']])) ? $remote_data[$product['m']] : null;
+                if ($remote === null || !isset($remote['q'], $remote['p'], $remote['s'], $remote['t'])) { continue; }
+                $remote_data[$product['m']] = $remote;
+                if (!isset($remote_data[$product['m']])) {]]></add>
+    </operation>
+  </file>
+
+  <file path="catalog/model/api/storeconnect.php">
+    <operation error="skip">
+      <ignoreif><![CDATA[if (!is_array($data) || !isset($data['s'], $data['q'], $data['p'], $data['t']))]]></ignoreif>
+      <search><![CDATA[public function UpdateProduct($model, $data) {]]></search>
+      <add position="after"><![CDATA[        if (!is_array($data) || !isset($data['s'], $data['q'], $data['p'], $data['t'])) {
+            return;
+        }
+]]></add>
+    </operation>
+    <operation error="skip">
+      <ignoreif><![CDATA[`status` = " . (int)($data['s'] ?? 0)]]></ignoreif>
+      <search><![CDATA[`status` = " . (0+$this->db->escape($data['s']))]]></search>
+      <add position="replace"><![CDATA[`status` = " . (int)($data['s'] ?? 0)]]></add>
+    </operation>
+    <operation error="skip">
+      <ignoreif><![CDATA[(int)($data['t'] ?? 0)]]></ignoreif>
+      <search><![CDATA[`stock_status_id` = " . (int)$data['t']]]></search>
+      <add position="replace"><![CDATA[`stock_status_id` = " . (int)($data['t'] ?? 0)]]></add>
+    </operation>
+    <operation error="skip">
+      <ignoreif><![CDATA[(int)($data['q'] ?? 0)]]></ignoreif>
+      <search><![CDATA[`quantity` = " . (int)$data['q']]]></search>
+      <add position="replace"><![CDATA[`quantity` = " . (int)($data['q'] ?? 0)]]></add>
+    </operation>
+    <operation error="skip">
+      <ignoreif><![CDATA[$data['p'] ?? '']]></ignoreif>
+      <search><![CDATA[$this->db->escape($data['p'])]]></search>
+      <add position="replace"><![CDATA[$this->db->escape($data['p'] ?? '')]]></add>
+    </operation>
+  </file>
+
+  <file path="catalog/model/extension/module/tagmanager.php">
+    <operation error="skip">
+      <ignoreif><![CDATA[$useremail = (string)$this->customer->getEmail();]]></ignoreif>
+      <search><![CDATA[$useremail = $this->customer->getEmail(); if (isset($this->session->data['guest']['email'])) { $useremail = $this->session->data['guest']['email']; } $useremail = strtolower(trim(str_replace(' ', '', $useremail)));]]></search>
+      <add position="replace"><![CDATA[$useremail = (string)$this->customer->getEmail(); if (isset($this->session->data['guest']['email'])) { $useremail = (string)$this->session->data['guest']['email']; } $useremail = strtolower(trim(str_replace(' ', '', $useremail)));]]></add>
+    </operation>
+    <operation error="skip">
+      <ignoreif><![CDATA[$useremail = (string)$this->customer->getEmail();]]></ignoreif>
+      <search><![CDATA[$useremail = $this->customer->getEmail(); if (isset($this->session->data['guest']['email'])) { $useremail = $this->session->data['guest']['email']; } $useremail = strtolower(trim(str_replace(' ', '', (string)$useremail)));]]></search>
+      <add position="replace"><![CDATA[$useremail = (string)$this->customer->getEmail(); if (isset($this->session->data['guest']['email'])) { $useremail = (string)$this->session->data['guest']['email']; } $useremail = strtolower(trim(str_replace(' ', '', $useremail)));]]></add>
+    </operation>
+    <operation error="skip">
+      <ignoreif><![CDATA[base64_encode((string)$this->config->get($PREFIX . 'tagmanager_code').(string)$this->config->get($PREFIX . 'tagmanager_gid').(string)$cid)]]></ignoreif>
+      <search><![CDATA[base64_encode($this->config->get($PREFIX . 'tagmanager_code').$this->config->get($PREFIX . 'tagmanager_gid').$cid)]]></search>
+      <add position="replace"><![CDATA[base64_encode((string)$this->config->get($PREFIX . 'tagmanager_code').(string)$this->config->get($PREFIX . 'tagmanager_gid').(string)$cid)]]></add>
+    </operation>
+    <operation error="skip">
+      <ignoreif><![CDATA['host' => (isset($_SERVER['SERVER_NAME']) ? $_SERVER['SERVER_NAME'] : '')]]></ignoreif>
+      <search><![CDATA['host' => $_SERVER['SERVER_NAME']]]></search>
+      <add position="replace"><![CDATA['host' => (isset($_SERVER['SERVER_NAME']) ? $_SERVER['SERVER_NAME'] : '')]]></add>
+    </operation>
+    <operation error="skip">
+      <ignoreif><![CDATA[public function cleanStr($data) { $data = (string)$data;]]></ignoreif>
+      <search><![CDATA[public function cleanStr($data) { $data = str_replace('"', "", $data);]]></search>
+      <add position="replace"><![CDATA[public function cleanStr($data) { $data = (string)$data; $data = str_replace('"', "", $data);]]></add>
+    </operation>
+  </file>
+
+  <file path="catalog/controller/startup/seo_url.php">
+    <operation error="skip">
+      <ignoreif><![CDATA[if (!isset($this->request->get['_route_']))]]></ignoreif>
+      <search><![CDATA[public function index() {]]></search>
+      <add position="after"><![CDATA[		if (!isset($this->request->get['_route_'])) {
+			$this->request->get['_route_'] = '';
+		}
+]]></add>
+    </operation>
+    <operation error="skip">
+      <ignoreif><![CDATA[if ($this->request->get['_route_'] !== '')]]></ignoreif>
+      <search><![CDATA[if (isset($this->request->get['_route_'])) {]]></search>
+      <add position="replace"><![CDATA[if ($this->request->get['_route_'] !== '') {]]></add>
     </operation>
   </file>
 
@@ -69,8 +160,85 @@
     </operation>
     <operation error="skip">
       <ignoreif><![CDATA[$base[mt_rand(0, $max)]]]></ignoreif>
-      <search regex="true"><![CDATA[/(\$[A-Za-z_][A-Za-z0-9_]*)\{([^{}]+)\}/]]></search>
+      <search regex="true"><![CDATA[/(\$[A-Za-z_][A-Za-z0-9_]*)\{(?!['"])([^{}]+)\}/]]></search>
       <add><![CDATA[${1}[${2}]]]></add>
+    </operation>
+  </file>
+
+  <file path="catalog/model/extension/payment/aam_pp_smart_buttons.php|catalog/model/extension/payment/pp_express.php">
+    <operation error="skip">
+      <ignoreif><![CDATA[$base[mt_rand(0, $max)]]]></ignoreif>
+      <search><![CDATA[$base{mt_rand(0, $max)}]]></search>
+      <add position="replace"><![CDATA[$base[mt_rand(0, $max)]]]></add>
+    </operation>
+  </file>
+
+  <file path="catalog/model/extension/payment/aam_pp_smart_buttons.php">
+    <operation error="skip">
+      <ignoreif><![CDATA[(int)($address['country_id'] ?? 0)]]></ignoreif>
+      <search><![CDATA[(int)$address['country_id']]]></search>
+      <add position="replace"><![CDATA[(int)($address['country_id'] ?? 0)]]></add>
+    </operation>
+    <operation error="skip">
+      <ignoreif><![CDATA[(int)($address['zone_id'] ?? 0)]]></ignoreif>
+      <search><![CDATA[(int)$address['zone_id']]]></search>
+      <add position="replace"><![CDATA[(int)($address['zone_id'] ?? 0)]]></add>
+    </operation>
+    <operation error="skip">
+      <ignoreif><![CDATA[foreach ((array)($item['option'] ?? []) as $option)]]></ignoreif>
+      <search><![CDATA[foreach ($item['option'] as $option)]]></search>
+      <add position="replace"><![CDATA[foreach ((array)($item['option'] ?? []) as $option)]]></add>
+    </operation>
+    <operation error="skip">
+      <ignoreif><![CDATA[$value = (string)($option['value'] ?? '')]]></ignoreif>
+      <search><![CDATA[$value = $option['value'];]]></search>
+      <add position="replace"><![CDATA[$value = (string)($option['value'] ?? '');]]></add>
+    </operation>
+    <operation error="skip">
+      <ignoreif><![CDATA[$filename = (string)$this->encryption->decrypt]]></ignoreif>
+      <search><![CDATA[$filename = $this->encryption->decrypt($this->config->get('config_encryption'), $option['value']);]]></search>
+      <add position="replace"><![CDATA[$filename = (string)$this->encryption->decrypt($this->config->get('config_encryption'), (string)($option['value'] ?? ''));]]></add>
+    </operation>
+    <operation error="skip">
+      <ignoreif><![CDATA[utf8_strlen((string)$value)]]></ignoreif>
+      <search><![CDATA[utf8_strlen($value)]]></search>
+      <add position="replace"><![CDATA[utf8_strlen((string)$value)]]></add>
+    </operation>
+    <operation error="skip">
+      <ignoreif><![CDATA[utf8_substr((string)$value, 0, 20)]]></ignoreif>
+      <search><![CDATA[utf8_substr($value, 0, 20)]]></search>
+      <add position="replace"><![CDATA[utf8_substr((string)$value, 0, 20)]]></add>
+    </operation>
+    <operation error="skip">
+      <ignoreif><![CDATA[substr((string)($item['model'] ?? ''), 0, 127)]]></ignoreif>
+      <search><![CDATA[substr($item['model'], 0, 127)]]></search>
+      <add position="replace"><![CDATA[substr((string)($item['model'] ?? ''), 0, 127)]]></add>
+    </operation>
+    <operation error="skip">
+      <ignoreif><![CDATA[!empty($this->session->data['currency']) ? $this->session->data['currency'] : $this->config->get('config_currency')]]></ignoreif>
+      <search><![CDATA[$this->session->data['currency']]]></search>
+      <add position="replace"><![CDATA[(!empty($this->session->data['currency']) ? $this->session->data['currency'] : $this->config->get('config_currency'))]]></add>
+    </operation>
+    <operation error="skip">
+      <ignoreif><![CDATA[is_array($product_info) && isset($product_info['shipping'])]]></ignoreif>
+      <search><![CDATA[isset($product_info['shipping']) && $product_info['shipping'] === 0]]></search>
+      <add position="replace"><![CDATA[is_array($product_info) && isset($product_info['shipping']) && $product_info['shipping'] === 0]]></add>
+    </operation>
+    <operation error="skip">
+      <ignoreif><![CDATA[json_decode(is_string($result) ? $result : '', true)]]></ignoreif>
+      <search><![CDATA[return (json_decode($result, true))['verification_status'];]]></search>
+      <add position="replace"><![CDATA[$decoded = json_decode(is_string($result) ? $result : '', true);
+		return is_array($decoded) ? ($decoded['verification_status'] ?? '') : '';]]></add>
+    </operation>
+    <operation error="skip">
+      <ignoreif><![CDATA[return json_decode(is_string($result) ? $result : '', true);]]></ignoreif>
+      <search><![CDATA[return json_decode($result, true);]]></search>
+      <add position="replace"><![CDATA[return json_decode(is_string($result) ? $result : '', true);]]></add>
+    </operation>
+    <operation error="skip">
+      <ignoreif><![CDATA['PayPal Smart debug (' . (string)$title . '): ' . json_encode($data)]]></ignoreif>
+      <search><![CDATA['PayPal Smart debug (' . $title . '): ' . json_encode($data)]]></search>
+      <add position="replace"><![CDATA['PayPal Smart debug (' . (string)$title . '): ' . json_encode($data)]]></add>
     </operation>
   </file>
 
@@ -101,7 +269,7 @@
     </operation>
     <operation error="skip">
       <ignoreif><![CDATA[$base[mt_rand(0, $max)]]]></ignoreif>
-      <search regex="true"><![CDATA[/(\$[A-Za-z_][A-Za-z0-9_]*)\{([^{}]+)\}/]]></search>
+      <search regex="true"><![CDATA[/(\$[A-Za-z_][A-Za-z0-9_]*)\{(?!['"])([^{}]+)\}/]]></search>
       <add><![CDATA[${1}[${2}]]]></add>
     </operation>
   </file>

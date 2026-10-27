@@ -1006,8 +1006,14 @@ function ensure_php8_repair_modification(): void
     }
     if ($found->num_rows > 0) {
         $row = $found->fetch_assoc();
-        if ((string) $row['version'] === (string) $document->version) {
-            fwrite(STDOUT, 'PHP 8 repair modification is already installed' . PHP_EOL);
+        $installed = (string) $row['version'];
+        $imageVersion = (string) $document->version;
+        if (version_compare($imageVersion, $installed, '<=')) {
+            if ($installed === $imageVersion) {
+                fwrite(STDOUT, 'PHP 8 repair modification is already installed' . PHP_EOL);
+            } else {
+                fwrite(STDOUT, 'Keeping PHP 8 repair modification ' . $installed . '. The image copy is ' . $imageVersion . '.' . PHP_EOL);
+            }
             $link->close();
             return;
         }

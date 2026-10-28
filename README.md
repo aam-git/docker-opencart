@@ -137,7 +137,7 @@ Used for a new command-line install. The first name, last name, and store name a
 | `PHP_POST_MAX_SIZE` | Maximum form post size. Keep this at least as large as the upload limit. | `64M` |
 | `TZ` | PHP timezone | `UTC` |
 
-OPcache does not check file timestamps on each request. Refreshing or clearing modifications drops that cache, so the next request uses the new files. Restart the container after any other PHP file change.
+OPcache checks file timestamps on every request. A changed PHP file, including one saved over SFTP, is compiled again on the next request. Refreshing or clearing modifications still drops the whole cache.
 
 > **📋 Complete reference**: see `.env.example` for the same settings with short comments.
 

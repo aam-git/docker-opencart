@@ -41,7 +41,7 @@ RUN set -eux; \
     docker-php-ext-install mysqli; \
     docker-php-ext-install pdo_mysql; \
     docker-php-ext-install zip; \
-    a2enmod rewrite headers; \
+    a2enmod rewrite headers remoteip; \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /var/www/html

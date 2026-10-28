@@ -222,6 +222,8 @@ HTTP_PORT=8080
 
 Terminate TLS on Traefik or another reverse proxy, and route to port 80.
 
+Apache trusts `CF-Connecting-IP` when the connection comes from a private address, which is Traefik on the Docker network. OpenCart then sees the visitor IP in `REMOTE_ADDR`. API IP rules, order fraud checks, and logs use that address. Put the real client addresses on the API user, not the Docker proxy address. A request that arrives without `CF-Connecting-IP` keeps the proxy address.
+
 For a large catalogue, or while the schema upgrade runs:
 
 ```bash
